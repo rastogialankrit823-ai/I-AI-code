@@ -86,32 +86,44 @@ mkdir -p "$HOME/.iandai"
 printf '{\n  "root": "%s"\n}\n' "$ROOT" > "$HOME/.iandai/config.json"
 ok "Install location saved to ~/.iandai/config.json"
 
-# ── 6. Optional: native desktop app ─────────────────────────────────────────
-bold "6/6 Desktop app (optional)"
-echo "  A native desktop app gives you a dock icon and one-click launch."
-echo "  Requires the Rust toolchain (~1 GB) and a 5–10 min build."
-printf '  Build the desktop app? [y/N] '
-read -r BUILD_APP || BUILD_APP="n"
+# ── 6. Native desktop app (recommended) ─────────────────────────────────────
+bold "6/6 Desktop app"
+echo "  Builds a real desktop app: dock icon, double-click launch, services"
+echo "  auto-start on open and stop on quit. One-time build (5–10 min,"
+echo "  installs the Rust toolchain if missing) — never needed again."
+printf '  Build the desktop app? [Y/n] '
+read -r BUILD_APP || BUILD_APP="y"
+[ -z "$BUILD_APP" ] && BUILD_APP="y"
 
-if [[ "$BUILD_APP" =~ ^[Yy] ]]; then
+if [[ ! "$BUILD_APP" =~ ^[Nn] ]]; then
   if ! command -v cargo >/dev/null; then
     echo "  Installing Rust via rustup…"
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
     # shellcheck disable=SC1091
     source "$HOME/.cargo/env"
   fi
-  ( cd "$ROOT/frontend" && npm run tauri build )
   if [ "$OS" = "Darwin" ]; then
+    # Build only the .app bundle — .dmg needs Finder permissions and isn't
+    # required for a local install.
+    ( cd "$ROOT/frontend" && npm run tauri build -- --bundles app )
     APP_SRC="$(find "$ROOT/frontend/src-tauri/target/release/bundle/macos" -maxdepth 1 -name '*.app' | head -1)"
     if [ -n "$APP_SRC" ]; then
+      rm -rf "/Applications/$(basename "$APP_SRC")"
       cp -R "$APP_SRC" /Applications/
       ok "Installed: /Applications/$(basename "$APP_SRC")"
-      echo "  Launch it from Spotlight or the Applications folder."
+      echo
+      bold "✅ Install complete"
+      echo "   Open 'I&AI Code' from Spotlight or Applications — services"
+      echo "   start automatically on open and stop when you quit."
+      echo "   (No rebuild ever needed. Browser alternative: ./scripts/start.sh)"
+      exit 0
     else
       warn "Build finished but no .app found — check frontend/src-tauri/target/release/bundle/"
     fi
   else
-    ok "Bundles are in frontend/src-tauri/target/release/bundle/"
+    ( cd "$ROOT/frontend" && npm run tauri build ) || warn "Desktop bundle failed — use ./scripts/start.sh instead"
+    BUNDLE_DIR="$ROOT/frontend/src-tauri/target/release/bundle"
+    ok "Bundles are in $BUNDLE_DIR (AppImage/deb — install or run directly)"
   fi
 else
   ok "Skipped. Start with: ./scripts/start.sh"

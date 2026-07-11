@@ -30,11 +30,16 @@ Interview-prep AI tools want a subscription and send your code to someone's clou
 ```bash
 git clone https://github.com/rastogialankrit823-ai/I-AI-code.git
 cd I-AI-code
-./scripts/install.sh   # builds llama.cpp, downloads model (~2.3 GB), installs deps
-./scripts/start.sh     # starts everything, opens the app window
+./scripts/install.sh   # one-time: builds llama.cpp, downloads model (~2.3 GB), builds the desktop app
 ```
 
-That's it. The installer optionally builds a **native desktop app** (dock icon, one-click launch) at the end — say yes if you have 10 minutes.
+That's it — **once**. The installer ends with a real desktop app (`/Applications/I&AI Code.app` on macOS, AppImage/deb on Linux). From then on it behaves like any normal app:
+
+- **Open it** from Spotlight/Dock → llama.cpp + backend start automatically (splash shows progress)
+- **Quit it** → services stop cleanly
+- **Reopen anytime** → no rebuild, no terminal, ever. If a previous run left services alive, the app reuses or replaces them automatically
+
+Prefer no desktop app? Answer "n" during install and use `./scripts/start.sh` — it starts everything and opens an app-style browser window.
 
 ### System requirements
 

@@ -159,6 +159,32 @@ fn wait_for_url(url: &str, attempts: u32) -> bool {
     false
 }
 
+/// One-shot health probe (no retries) — used to detect already-running services.
+fn is_healthy(url: &str) -> bool {
+    matches!(
+        ureq::get(url).timeout(std::time::Duration::from_secs(1)).call(),
+        Ok(resp) if resp.status() < 500
+    )
+}
+
+/// Kill whatever process is squatting on a port (stale sidecar from a crashed
+/// previous run). Unix-only; a no-op if the port is free.
+fn kill_port(port: u16) {
+    let _ = Command::new("sh")
+        .args(["-c", &format!("lsof -ti tcp:{port} | xargs kill -9 2>/dev/null")])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+}
+
+/// Kill any sidecars we spawned. Safe to call multiple times.
+fn kill_sidecars(state: &Mutex<SidecarHandles>) {
+    let mut h = state.lock().unwrap();
+    if let Some(mut c) = h.llama.take()   { let _ = c.kill(); }
+    if let Some(mut c) = h.backend.take() { let _ = c.kill(); }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let handles: Mutex<SidecarHandles> = Mutex::new(SidecarHandles { llama: None, backend: None });
@@ -189,41 +215,53 @@ pub fn run() {
                 };
 
                 // ── llama.cpp ───────────────────────────────────────────────
-                emit("llama", "Starting llama.cpp server…", 5);
-                match spawn_llama(&root) {
-                    Ok(child) => {
-                        if let Some(state) = app_handle.try_state::<Mutex<SidecarHandles>>() {
-                            state.lock().unwrap().llama = Some(child);
+                // Reuse a healthy instance from a previous run; clear stale
+                // port-squatters (crashed runs) before spawning fresh.
+                if is_healthy("http://127.0.0.1:8081/v1/models") {
+                    emit("llama", "llama.cpp already running — reusing", 50);
+                } else {
+                    kill_port(8081);
+                    emit("llama", "Starting llama.cpp server…", 5);
+                    match spawn_llama(&root) {
+                        Ok(child) => {
+                            if let Some(state) = app_handle.try_state::<Mutex<SidecarHandles>>() {
+                                state.lock().unwrap().llama = Some(child);
+                            }
+                            emit("llama", "Loading model…", 20);
+                            if !wait_for_url("http://127.0.0.1:8081/v1/models", 90) {
+                                emit("error", "llama.cpp failed to become ready in 90s", 20);
+                                return;
+                            }
+                            emit("llama", "llama.cpp ready", 50);
                         }
-                        emit("llama", "Loading model…", 20);
-                        if !wait_for_url("http://127.0.0.1:8081/v1/models", 60) {
-                            emit("error", "llama.cpp failed to become ready in 60s", 20);
+                        Err(e) => {
+                            emit("error", &format!("Could not start llama-server: {e}"), 5);
                             return;
                         }
-                        emit("llama", "llama.cpp ready", 50);
-                    }
-                    Err(e) => {
-                        emit("error", &format!("Could not start llama-server: {e}"), 5);
-                        return;
                     }
                 }
 
                 // ── Backend ─────────────────────────────────────────────────
-                emit("backend", "Starting FastAPI backend…", 60);
-                match spawn_backend(&root) {
-                    Ok(child) => {
-                        if let Some(state) = app_handle.try_state::<Mutex<SidecarHandles>>() {
-                            state.lock().unwrap().backend = Some(child);
+                if is_healthy("http://127.0.0.1:8000/") {
+                    emit("backend", "Backend already running — reusing", 95);
+                } else {
+                    kill_port(8000);
+                    emit("backend", "Starting FastAPI backend…", 60);
+                    match spawn_backend(&root) {
+                        Ok(child) => {
+                            if let Some(state) = app_handle.try_state::<Mutex<SidecarHandles>>() {
+                                state.lock().unwrap().backend = Some(child);
+                            }
+                            if !wait_for_url("http://127.0.0.1:8000/", 30) {
+                                emit("error", "Backend failed to become ready in 30s", 60);
+                                return;
+                            }
+                            emit("backend", "Backend ready", 95);
                         }
-                        if !wait_for_url("http://127.0.0.1:8000/", 30) {
-                            emit("error", "Backend failed to become ready in 30s", 60);
+                        Err(e) => {
+                            emit("error", &format!("Could not start backend: {e}"), 60);
                             return;
                         }
-                        emit("backend", "Backend ready", 95);
-                    }
-                    Err(e) => {
-                        emit("error", &format!("Could not start backend: {e}"), 60);
-                        return;
                     }
                 }
 
@@ -234,12 +272,18 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 if let Some(state) = window.app_handle().try_state::<Mutex<SidecarHandles>>() {
-                    let mut h = state.lock().unwrap();
-                    if let Some(mut c) = h.llama.take()   { let _ = c.kill(); }
-                    if let Some(mut c) = h.backend.take() { let _ = c.kill(); }
+                    kill_sidecars(&state);
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // Cmd+Q / Dock-quit path — window CloseRequested may not fire.
+            if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
+                if let Some(state) = app_handle.try_state::<Mutex<SidecarHandles>>() {
+                    kill_sidecars(&state);
+                }
+            }
+        });
 }
