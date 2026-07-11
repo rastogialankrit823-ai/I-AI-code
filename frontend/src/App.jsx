@@ -1,0 +1,574 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import Sidebar from './components/Sidebar.jsx'
+import TopBar from './components/TopBar.jsx'
+import CodeEditor from './components/CodeEditor.jsx'
+import BuildRunPanel from './components/BuildRunPanel.jsx'
+import AssistantPanel from './components/AssistantPanel.jsx'
+import SystemDesignMode from './components/SystemDesignMode.jsx'
+import InterviewMode from './components/InterviewMode.jsx'
+import ContextPanel from './components/ContextPanel.jsx'
+import SplashScreen from './components/SplashScreen.jsx'
+import { analyzeCode, analyzeComplexity, explainRunResult, generatePatch, getStarterCode, runCodeOnServer, runStressTest, validateSystemDesign } from './api.js'
+
+// ── WA helpers ────────────────────────────────────────────────────────────────
+function normalizeOut(s) {
+  return String(s || '').replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+function outputsMatch(actual, expected) {
+  const a = normalizeOut(actual)
+  const e = normalizeOut(expected)
+  if (a === e) return true
+  const na = Number(actual.trim()), ne = Number(expected.trim())
+  if (!isNaN(na) && !isNaN(ne) && isFinite(na) && isFinite(ne)) return na === ne
+  return false
+}
+
+// Parse Input/Output example pairs from problem statement and match against current stdin.
+// Returns the expected output string, or '' if none found.
+function resolveExpectedOutput(problemContext, stdin) {
+  if (!problemContext) return ''
+  const ctx = problemContext
+
+  // Try to find Input/Output blocks (handles multi-line inputs)
+  const blockRe = /Input\s*[:\-]\s*([\s\S]*?)(?=Output\s*[:\-])/gi
+  const outputRe = /Output\s*[:\-]\s*([^\n]+)/gi
+  const inputs = [], outputs = []
+  let m
+  while ((m = blockRe.exec(ctx)) !== null) inputs.push(m[1].trim())
+  while ((m = outputRe.exec(ctx)) !== null) outputs.push(m[1].trim())
+
+  if (inputs.length > 0 && outputs.length > 0 && stdin.trim()) {
+    const normStdin = normalizeOut(stdin)
+    for (let i = 0; i < inputs.length; i++) {
+      const normInput = normalizeOut(inputs[i])
+      // Match if stdin contains the example input or they're equal
+      if (normStdin === normInput || normStdin.includes(normInput) || normInput.includes(normStdin)) {
+        return (outputs[i] || outputs[0] || '').replace(/[^\x20-\x7E]/g, '').trim()
+      }
+    }
+    // No stdin match — fall back to first example output
+    return outputs[0].replace(/[^\x20-\x7E]/g, '').trim()
+  }
+
+  // Fallback: find first "Output:" / "Expected:" / "Answer:" line
+  const simple = ctx.match(/(?:Output|Expected|Answer)\s*[:\-]\s*([^\n]+)/i)
+  return simple ? simple[1].replace(/[^\x20-\x7E]/g, '').trim() : ''
+}
+
+// ── Mode context persistence ──────────────────────────────────────────────────
+const CTX_TTL_MS = 10 * 60 * 1000 // 10 minutes
+
+function saveCtxToStorage(mode, ctx) {
+  try {
+    localStorage.setItem(`ctx_${mode}`, JSON.stringify({ ts: Date.now(), ctx }))
+  } catch {}
+}
+
+function loadCtxFromStorage(mode) {
+  try {
+    const raw = localStorage.getItem(`ctx_${mode}`)
+    if (!raw) return null
+    const { ts, ctx } = JSON.parse(raw)
+    if (Date.now() - ts > CTX_TTL_MS) { localStorage.removeItem(`ctx_${mode}`); return null }
+    return ctx
+  } catch { return null }
+}
+
+export default function App() {
+  const [booting, setBooting] = useState(true)
+  const [activeMode, setActiveMode] = useState('DSA')
+  const prevModeRef = useRef('DSA')
+
+  // ── Multi-file tab management ──────────────────────────────────
+  const [tabs, setTabs] = useState([{ id: 'main', name: 'main.py', content: '', path: null }])
+  const [activeTabId, setActiveTabId] = useState('main')
+  const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0]
+  const code = activeTab?.content ?? ''
+  const editorTitle = activeTab?.name ?? 'main.py'
+
+  const setCode = useCallback((newContent) => {
+    setTabs(prev => prev.map(t => t.id === (activeTabId) ? { ...t, content: newContent } : t))
+  }, [activeTabId])
+
+  const setEditorTitle = useCallback((name) => {
+    setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, name } : t))
+  }, [activeTabId])
+
+  const selectTab = useCallback((tabId) => setActiveTabId(tabId), [])
+
+  const closeTab = useCallback((tabId) => {
+    setTabs(prev => {
+      const idx = prev.findIndex(t => t.id === tabId)
+      const next = prev.filter(t => t.id !== tabId)
+      if (next.length === 0) {
+        const fallback = { id: 'main-' + Date.now(), name: 'main.py', content: '', path: null }
+        setActiveTabId(fallback.id)
+        return [fallback]
+      }
+      setActiveTabId(curId => curId === tabId ? (next[Math.max(0, idx - 1)]?.id || next[0].id) : curId)
+      return next
+    })
+  }, [])
+
+  const newTab = useCallback(() => {
+    const id = 'tab-' + Date.now()
+    setTabs(prev => [...prev, { id, name: 'untitled.py', content: '', path: null }])
+    setActiveTabId(id)
+  }, [])
+
+  const [stdin, setStdin] = useState('')
+  const [output, setOutput] = useState('')
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState(false)
+  const [isRunning, setIsRunning] = useState(false)
+  const [runPanelOpen, setRunPanelOpen] = useState(false)
+
+  // omniCards: array of { data, patch, isGeneratingPatch, idx }
+  const [omniCards, setOmniCards] = useState([])
+  const [showOmni, setShowOmni] = useState(false)
+
+  const [systemContext, setSystemContext] = useState('')
+  const [pseudocode, setPseudocode] = useState('')
+  const [validation, setValidation] = useState(null)
+  const [useInternet, setUseInternet] = useState(false)
+  const [starterStatus, setStarterStatus] = useState('')
+  const [runNote, setRunNote] = useState(null)
+  const [complexity, setComplexity] = useState(null)
+  const [stressResults, setStressResults] = useState(null)
+  const [isStressRunning, setIsStressRunning] = useState(false)
+  const [undoCode, setUndoCode] = useState(null)
+  const [modelMode, setModelMode] = useState('main')
+  const [problemContext, setProblemContext] = useState('')
+  const language = 'python'
+  const [runnerLabel, setRunnerLabel] = useState('runner')
+  const [backgroundStatus, setBackgroundStatus] = useState('')
+  const [verdict, setVerdict] = useState(null) // null | 'correct' | { expected, actual }
+
+  // Currently opened external file (from FileExplorer)
+  const [openedFile, setOpenedFile] = useState(null) // {name, path, ext, content}
+
+  const isSystem = activeMode === 'System Design'
+  const isInterview = activeMode === 'Interview'
+
+  // ── Open file from sidebar FileExplorer ─────────────────────────────
+  const handleSidebarFileOpen = (entry) => {
+    setOpenedFile(entry)
+    if (!isInterview && !isSystem) {
+      // Check if file is already open in a tab
+      const existing = tabs.find(t => t.path === entry.path)
+      if (existing) { setActiveTabId(existing.id); return }
+      // Open as a new tab
+      const id = 'tab-' + Date.now()
+      setTabs(prev => [...prev, { id, name: entry.name, content: entry.content || '', path: entry.path }])
+      setActiveTabId(id)
+    }
+    // LLD mode: SystemDesignMode reads openedFile prop and manages its own tabs
+  }
+
+  // ── Mode context persistence ──────────────────────────────────
+  // On mode switch: save outgoing mode's context, restore incoming mode's context (if within TTL)
+  useEffect(() => {
+    const prev = prevModeRef.current
+    if (prev === activeMode) return
+    // Save outgoing context
+    if (prev === 'System Design' && systemContext.trim()) {
+      saveCtxToStorage('System Design', systemContext)
+      setSystemContext('')         // clear in-memory
+    } else if (prev === 'DSA' && problemContext.trim()) {
+      saveCtxToStorage('DSA', problemContext)
+      setProblemContext('')
+    }
+    // Restore incoming context
+    if (activeMode === 'System Design') {
+      const saved = loadCtxFromStorage('System Design')
+      if (saved) { setSystemContext(saved); localStorage.removeItem('ctx_System Design') }
+    } else if (activeMode === 'DSA') {
+      const saved = loadCtxFromStorage('DSA')
+      if (saved) { setProblemContext(saved); localStorage.removeItem('ctx_DSA') }
+    }
+    prevModeRef.current = activeMode
+  }, [activeMode])
+
+  // Schedule deletion of stale context after TTL
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      ['System Design', 'DSA', 'Interview'].forEach(m => {
+        try {
+          const raw = localStorage.getItem(`ctx_${m}`)
+          if (raw) {
+            const { ts } = JSON.parse(raw)
+            if (Date.now() - ts > CTX_TTL_MS) localStorage.removeItem(`ctx_${m}`)
+          }
+        } catch {}
+      })
+    }, CTX_TTL_MS)
+    return () => clearTimeout(timer)
+  }, [])
+
+  // ── helpers ──────────────────────────────────────────────────
+  const clearOmni = () => { setOmniCards([]); setShowOmni(false) }
+
+  // Replace all cards with a single new one (error/single-result flow)
+  const handleOmniResult = (data) => {
+    setOmniCards([{ data, patch: null, isGeneratingPatch: false, idx: 0 }])
+    setShowOmni(true)
+  }
+
+  // Add a card without replacing others (explain-detail flow)
+  const handleAddOmniCard = (data) => {
+    setOmniCards(prev => {
+      const idx = prev.length
+      return [...prev, { data, patch: null, isGeneratingPatch: false, idx }]
+    })
+    setShowOmni(true)
+  }
+
+  const handleGenerateFix = async (cardIdx) => {
+    const card = omniCards.find(c => c.idx === cardIdx)
+    if (!card || !code) return
+    setOmniCards(prev => prev.map(c => c.idx === cardIdx ? { ...c, isGeneratingPatch: true } : c))
+    try {
+      const patch = await generatePatch(code, card.data, language, modelMode)
+      if (patch.available !== false) {
+        setOmniCards(prev => prev.map(c => c.idx === cardIdx ? { ...c, patch, isGeneratingPatch: false } : c))
+      } else {
+        setOmniCards(prev => prev.map(c => c.idx === cardIdx ? { ...c, isGeneratingPatch: false } : c))
+      }
+    } catch {
+      setOmniCards(prev => prev.map(c => c.idx === cardIdx ? { ...c, isGeneratingPatch: false } : c))
+    }
+  }
+
+  const handleApplyPatch = (cardIdx, patch) => {
+    if (!patch) return
+    setUndoCode(code)
+    const lines = code.split('\n')
+    const action = String(patch.action || 'REPLACE').toUpperCase()
+    let snippetLines = String(patch.code_snippet || '').split('\n')
+
+    let start = Math.max(0, Math.min(lines.length - 1, (patch.start_line || 1) - 1))
+    let end = Math.max(start, Math.min(lines.length - 1, (patch.end_line || patch.start_line || 1) - 1))
+
+    if (action === 'REPLACE') {
+      const belowSet = new Set(lines.slice(end + 1).map(l => l.trimEnd()))
+      snippetLines = snippetLines.filter(l =>
+        l.trim().startsWith('# Patch accepted:') || !belowSet.has(l.trimEnd())
+      )
+      if (snippetLines.length > end - start + 1) {
+        const body = snippetLines.filter(l => !l.trim().startsWith('# Patch accepted:'))
+        let pushed = 0
+        for (let si = 0; si < body.length && start - pushed > 0; si++) {
+          if (body[si].trimEnd() === (lines[start - pushed - 1] || '').trimEnd()) pushed++
+          else break
+        }
+        start = Math.max(0, start - pushed)
+      }
+      const targetIndent = (lines[start] || '').match(/^(\s*)/)[1]
+      const firstCode = snippetLines.find(l => !l.trim().startsWith('# Patch accepted:') && l.trim())
+      if (firstCode) {
+        const snippetIndent = firstCode.match(/^(\s*)/)[1]
+        if (snippetIndent !== targetIndent) {
+          const delta = targetIndent.length - snippetIndent.length
+          snippetLines = snippetLines.map(l => {
+            if (!l.trim()) return l
+            if (l.trim().startsWith('# Patch accepted:')) return targetIndent + l.trim()
+            if (delta > 0) return ' '.repeat(delta) + l
+            if (delta < 0) return l.slice(-delta)
+            return l
+          })
+        }
+      }
+    }
+
+    if (action === 'INSERT') {
+      // Auto-indent: match the indentation of the surrounding line
+      const contextLine = lines[start] || lines[Math.max(0, start - 1)] || ''
+      const targetIndent = contextLine.match(/^(\s*)/)[1]
+      // Find base indent of the snippet
+      const nonEmpty = snippetLines.filter(l => l.trim())
+      if (nonEmpty.length > 0) {
+        const snippetBase = nonEmpty[0].match(/^(\s*)/)[1]
+        if (snippetBase !== targetIndent) {
+          const delta = targetIndent.length - snippetBase.length
+          snippetLines = snippetLines.map(l => {
+            if (!l.trim()) return l
+            if (delta > 0) return ' '.repeat(delta) + l
+            if (delta < 0) return l.slice(-delta)
+            return l
+          })
+        }
+      }
+      lines.splice(start, 0, ...snippetLines)
+    }
+    else if (action === 'DELETE') lines.splice(start, end - start + 1)
+    else lines.splice(start, end - start + 1, ...snippetLines)
+
+    setCode(lines.join('\n'))
+    setSuccess(true)
+    setError('')
+
+    // Remove applied card; close omni view if no cards left
+    setOmniCards(prev => {
+      const next = prev.filter(c => c.idx !== cardIdx)
+      if (next.length === 0) setShowOmni(false)
+      return next
+    })
+  }
+
+  const handleDismissOmni = (cardIdx) => {
+    setOmniCards(prev => {
+      const next = prev.filter(c => c.idx !== cardIdx)
+      if (next.length === 0) setShowOmni(false)
+      return next
+    })
+  }
+
+  const undoAIChange = () => {
+    if (undoCode === null) return
+    setCode(undoCode)
+    setUndoCode(null)
+    clearOmni()
+    setSuccess(false)
+  }
+
+  // ── starter ──────────────────────────────────────────────────
+  const loadDynamicStarter = async () => {
+    if (isInterview) return
+    setStarterStatus('Generating dynamic starter...')
+    try {
+      const data = await getStarterCode(activeMode, language, isSystem ? systemContext : '', useInternet, modelMode)
+      if (data.available === false) {
+        setStarterStatus(data.error || 'Dynamic starter unavailable')
+        if (!code.trim()) setCode('')
+        return
+      }
+      if (!code.trim() || window.confirm('Replace current editor with dynamic starter?')) {
+        setCode(data.code || '')
+        if (data.title) setEditorTitle(data.title)
+        if (data.stdin !== undefined) setStdin(data.stdin || '')
+      }
+      setStarterStatus(data.note || 'Dynamic starter loaded')
+    } catch (err) {
+      setStarterStatus(`Dynamic starter needs backend/LLM: ${err.message}`)
+      if (!code.trim()) setCode('')
+    }
+  }
+
+  useEffect(() => {
+    if (!isInterview && !code.trim()) loadDynamicStarter()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMode])
+
+  // ── run ──────────────────────────────────────────────────────
+  const handleRun = async () => {
+    if (isInterview) return
+    if (isSystem) return handleValidateSystem()
+
+    setRunPanelOpen(true)
+    setIsRunning(true)
+    setError('')
+    setOutput('')
+    setSuccess(false)
+    setVerdict(null)
+    clearOmni()
+    setRunNote(null)
+    setComplexity(null)
+    setStressResults(null)
+    setBackgroundStatus('')
+
+    try {
+      const result = await runCodeOnServer(code, activeMode, stdin, language, modelMode)
+      setOutput(result.output || '')
+      setError(result.error || '')
+      setSuccess(Boolean(result.success))
+      setRunNote(result.run_explanation || null)
+      setComplexity(result.complexity || result.run_explanation || null)
+      setRunnerLabel(result.runner || 'runner')
+      setIsRunning(false)
+
+      setBackgroundStatus('AI analysis running in background...')
+      const backgroundJobs = []
+
+      backgroundJobs.push(
+        explainRunResult(code, activeMode, stdin, result.output || '', result.error || '', Boolean(result.success), useInternet, modelMode)
+          .then(note => setRunNote(note))
+          .catch(() => null)
+      )
+
+      backgroundJobs.push(
+        analyzeComplexity(code, activeMode, isSystem ? systemContext : '', modelMode)
+          .then(cx => setComplexity(cx))
+          .catch(() => null)
+      )
+
+      if (!result.success && (result.error || '').trim()) {
+        // Runtime/compiler error → repair card
+        backgroundJobs.push(
+          analyzeCode(code, result.error || '', result.output || '', activeMode, language, modelMode)
+            .then(async data => {
+              if (data.available !== false) {
+                handleOmniResult(data)
+                const q = `Explain the function at line ${data.line} — what it's supposed to do, what parameters it expects, and how it should work correctly.`
+                const ctx = await analyzeCode(code, '', '', activeMode, language, modelMode, q).catch(() => null)
+                if (ctx && ctx.available !== false) handleAddOmniCard({ ...ctx, issue_type: 'QUESTION' })
+              }
+            })
+            .catch(() => null)
+        )
+      } else if (result.success && problemContext.trim() && (result.output || '').trim()) {
+        // Successful run + problem context → check for wrong answer
+        const actualOut = (result.output || '').trim()
+        const expectedVal = resolveExpectedOutput(problemContext, stdin)
+        const isCorrect = expectedVal ? outputsMatch(actualOut, expectedVal) : null
+
+        if (isCorrect === true) {
+          setVerdict('correct')
+        } else if (isCorrect === false) {
+          setVerdict({ expected: expectedVal, actual: actualOut })
+          const expectedHint = ` Expected: "${expectedVal}", Got: "${actualOut}".`
+          const waError = `WRONG ANSWER: output "${actualOut}" galat hai.${expectedHint}`
+          const waQuestion = `WRONG ANSWER: actual="${actualOut}"${expectedHint} Problem: ${problemContext.substring(0, 500)}. Exact line find karo jahan wrong value assign hai.`
+          backgroundJobs.push(
+            analyzeCode(code, waError, actualOut, activeMode, language, modelMode, waQuestion)
+              .then(async data => {
+                if (data.available !== false) {
+                  handleOmniResult(data)
+                  const q = `Line ${data.line} pe kya bug hai? Expected vs actual behavior explain karo Hinglish mein.`
+                  const ctx = await analyzeCode(code, '', '', activeMode, language, modelMode, q).catch(() => null)
+                  if (ctx && ctx.available !== false) handleAddOmniCard({ ...ctx, issue_type: 'QUESTION' })
+                }
+              })
+              .catch(() => null)
+          )
+        }
+      }
+
+      Promise.allSettled(backgroundJobs).then(() => setBackgroundStatus('AI analysis ready'))
+    } catch (err) {
+      setError(`Backend error: ${err.message}`)
+      setSuccess(false)
+      clearOmni()
+      setIsRunning(false)
+      setBackgroundStatus('')
+    }
+  }
+
+  const handleValidateSystem = async () => {
+    setIsRunning(true)
+    setValidation(null)
+    try {
+      const result = await validateSystemDesign(systemContext, 'Diagram should be generated dynamically from context/code/pseudocode.', code, pseudocode, useInternet, modelMode)
+      setValidation(result)
+    } catch (err) {
+      setValidation({ works: false, diagram_style: 'Unavailable', summary: `Backend error: ${err.message}`, gaps: [], repair_gap: null, suggestions: [], diagram: null })
+    } finally {
+      setIsRunning(false)
+    }
+  }
+
+  const handleStressTest = async () => {
+    if (isSystem || isInterview) return
+    setRunPanelOpen(true)
+    setIsStressRunning(true)
+    setStressResults(null)
+    try {
+      const data = await runStressTest(code, activeMode, 6, language, modelMode)
+      setStressResults(data)
+    } catch (err) {
+      setStressResults({ results: [{ name: 'Stress test backend error', stdin: '', output: '', error: err.message, passed: false }] })
+    } finally {
+      setIsStressRunning(false)
+    }
+  }
+
+  const clearRun = () => { setOutput(''); setError(''); setSuccess(false) }
+
+  if (booting) return <SplashScreen onReady={() => setBooting(false)} />
+
+  return (
+    <div className="app-shell">
+      <div className="bg-glow one" />
+      <div className="bg-glow two" />
+      <Sidebar
+        activeMode={activeMode}
+        setActiveMode={setActiveMode}
+        onFileOpen={handleSidebarFileOpen}
+        selectedPath={openedFile?.path}
+      />
+      <main className="main-area">
+        <TopBar activeMode={activeMode} onRun={handleRun} isRunning={isRunning} />
+
+        {isInterview ? (
+          <InterviewMode useInternet={useInternet} setUseInternet={setUseInternet} modelMode={modelMode} />
+        ) : isSystem ? (
+          <SystemDesignMode
+            context={systemContext}
+            setContext={setSystemContext}
+            modelMode={modelMode}
+            externalFile={openedFile}
+          />
+        ) : (
+          <>
+            <AssistantPanel
+              activeMode={activeMode}
+              code={code}
+              context={problemContext}
+              modelMode={modelMode}
+              language={language}
+              runOutput={output}
+              runError={error}
+              onOmniResult={handleOmniResult}
+              onAddOmniCard={handleAddOmniCard}
+            />
+            <div className="workspace-with-context">
+              <div className="workspace-grid-solo">
+                <div className="workspace-left">
+                  <CodeEditor
+                    code={code}
+                    setCode={setCode}
+                    omniCards={omniCards}
+                    showOmni={showOmni}
+                    onGenerateFix={handleGenerateFix}
+                    onApplyPatch={handleApplyPatch}
+                    onDismissOmni={handleDismissOmni}
+                    title={editorTitle}
+                    language={language}
+                    tabs={tabs}
+                    activeTabId={activeTabId}
+                    onTabSelect={selectTab}
+                    onTabClose={closeTab}
+                    onNewTab={newTab}
+                  />
+                </div>
+              </div>
+              <ContextPanel context={problemContext} setContext={setProblemContext} />
+            </div>
+            <BuildRunPanel
+              open={true}
+              stdin={stdin}
+              setStdin={setStdin}
+              output={output}
+              error={error}
+              success={success}
+              isRunning={isRunning}
+              runNote={runNote}
+              complexity={complexity}
+              stressResults={stressResults}
+              isStressRunning={isStressRunning}
+              backgroundStatus={backgroundStatus}
+              verdict={verdict}
+              onStressTest={handleStressTest}
+              onUndo={undoAIChange}
+              canUndo={undoCode !== null}
+              language="Python 3"
+              runner={runnerLabel}
+              onRun={handleRun}
+              onClear={clearRun}
+            />
+          </>
+        )}
+      </main>
+    </div>
+  )
+}

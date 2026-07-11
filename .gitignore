@@ -1,0 +1,35 @@
+# ── Models & llama.cpp (installed by scripts/install.sh) ──
+models/
+llama.cpp/
+
+# ── Python ──
+backend/.venv/
+backend/.env
+__pycache__/
+*.pyc
+backend/app_settings.json
+backend/mistake_memory.json
+backend/lld-workspace/
+
+# ── Node ──
+node_modules/
+frontend/dist/
+
+# ── Rust / Tauri ──
+frontend/src-tauri/target/
+frontend/src-tauri/gen/
+
+# ── Runtime & logs ──
+.run_logs/
+*.log
+
+# ── OS / editor ──
+.DS_Store
+.idea/
+.vscode/
+.claude/
+
+# ── Local session/context files ──
+.mode_context/
+.pids/
+_archive/
