@@ -2955,6 +2955,15 @@ button.run-panel-tab:hover:not(.active):not(:disabled) {
 [data-theme="light"] .settings-theme-option { background: rgba(15,29,52,.04); }
 [data-theme="light"] .settings-theme-option:hover { background: rgba(15,29,52,.07); }
 
+/* ── Session-memory chip ───────────────────────────────────────────── */
+.mem-chip {
+  margin-left: auto;
+  color: var(--violet, #7eb3ff) !important;
+  border-color: rgba(126, 179, 255, .3) !important;
+}
+.mem-chip:hover { background: rgba(126, 179, 255, .12) !important; }
+[data-theme="light"] .mem-chip { color: #2563eb !important; border-color: rgba(37,99,235,.3) !important; }
+
 /* ── VS Code-style tab bar (shared: DSA editor + LLD workspace) ────── */
 .vtab-bar {
   display: flex; align-items: stretch; height: 36px;

@@ -1,6 +1,6 @@
-import { Bot, Bug, Lightbulb, Loader2, Rocket, Send, Zap } from 'lucide-react'
+import { Bot, Brain, Bug, Lightbulb, Loader2, Rocket, Send, Zap } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { analyzeCode, chatWithBro, compactContext, explainCode } from '../api.js'
+import { analyzeCode, chatWithBro, clearSessionMemory, compactContext, explainCode, getSessionMemory } from '../api.js'
 
 const approxTokens = (msgs) => msgs.reduce((sum, m) => sum + (m.text || '').length, 0) / 4
 const COMPACT_TOKEN_THRESHOLD = 6000
@@ -45,8 +45,23 @@ export default function AssistantPanel({
   const [busy, setBusy] = useState(false)
   const [phase, setPhase] = useState('')          // what the AI is doing right now
   const [elapsed, setElapsed] = useState(0)       // seconds since request started
+  const [memCount, setMemCount] = useState(0)     // session-memory entries alive
   const startRef = useRef(0)
   const chatEndRef = useRef(null)
+
+  // Poll session memory count (cheap endpoint; sweeps stale entries server-side)
+  const refreshMem = () => {
+    getSessionMemory().then(r => setMemCount(r?.stats?.entries ?? 0)).catch(() => {})
+  }
+  useEffect(() => {
+    refreshMem()
+    const t = setInterval(refreshMem, 60000)
+    return () => clearInterval(t)
+  }, [])
+
+  const handleClearMem = async () => {
+    try { await clearSessionMemory(); setMemCount(0) } catch {}
+  }
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -54,7 +69,7 @@ export default function AssistantPanel({
 
   // 1s ticker while busy — drives the visible timer
   useEffect(() => {
-    if (!busy) { setElapsed(0); return }
+    if (!busy) { setElapsed(0); refreshMem(); return }
     startRef.current = Date.now()
     const t = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startRef.current) / 1000))
@@ -239,6 +254,15 @@ export default function AssistantPanel({
         <button className="assistant-action-btn" onClick={() => send('stress test edge cases batao')} disabled={busy}>
           <Zap size={12} /> Stress Test
         </button>
+        {memCount > 0 && (
+          <button
+            className="assistant-action-btn mem-chip"
+            onClick={handleClearMem}
+            title={`AI remembers ${memCount} recent item${memCount === 1 ? '' : 's'} from this session (runs, bugs, questions). Stale items auto-expire after 30 min. Click to clear now.`}
+          >
+            <Brain size={12} /> {memCount} ctx · clear
+          </button>
+        )}
       </div>
     </div>
   )

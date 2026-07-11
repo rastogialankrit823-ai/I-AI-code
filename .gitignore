@@ -9,6 +9,7 @@ __pycache__/
 *.pyc
 backend/app_settings.json
 backend/mistake_memory.json
+backend/.session_memory.json
 backend/lld-workspace/
 
 # ── Node ──

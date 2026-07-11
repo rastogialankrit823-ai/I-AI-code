@@ -17,6 +17,7 @@ from pydantic import BaseModel
 import ai_engine
 import parallel_runtime
 import runner
+import session_memory
 
 # ── LLD workspace directory ──────────────────────────────────────────────────
 _LLD_WS = Path(os.getenv("LLD_WORKSPACE", "./lld-workspace")).resolve()
@@ -310,6 +311,12 @@ async def run_code(req: CodeRequest):
         return {"success": False, "output": "", "error": f"Unsupported language for runner: {req.language}", "repair_gap": None, "language": language}
     result = await parallel_runtime.code_task(runner.execute_code, language, req.code, req.stdin)
     complexity = ai_engine.analyze_complexity(req.code, req.mode, "", req.model_mode) if req.mode.lower() == "dsa" else None
+    # Session memory: remember the outcome of this run (TTL-evicted)
+    outcome = "OK" if result["success"] else f"ERROR: {str(result['error'])[:200]}"
+    session_memory.remember(
+        "run", req.mode,
+        f"ran {language} code ({len(req.code.splitlines())} lines), stdin={req.stdin[:80]!r} → {outcome}; output={str(result['output'])[:160]!r}",
+    )
     return {
         "success": result["success"],
         "output": result["output"],
@@ -335,7 +342,11 @@ async def repair_gap(req: RepairGapRequest):
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
-    result = await parallel_runtime.llm_task(ai_engine.chat, req.message, req.mode, req.code, req.context, req.use_internet, req.model_mode, req.history)
+    # Enrich the prompt with recent session context; remember the question topic
+    session_ctx = session_memory.recall(req.mode)
+    ctx = f"{session_ctx}\n\n{req.context}".strip() if session_ctx else req.context
+    session_memory.remember("chat", req.mode, f"user asked: {req.message[:200]}")
+    result = await parallel_runtime.llm_task(ai_engine.chat, req.message, req.mode, req.code, ctx, req.use_internet, req.model_mode, req.history)
     return result if isinstance(result, dict) else {"reply": result, "cards": []}
 
 
@@ -475,7 +486,13 @@ async def lld_judge(req: LLDJudgeRequest):
 
 @app.post("/ai/analyze")
 async def analyze_code(req: OmniAnalyzeRequest):
-    return await parallel_runtime.llm_task(ai_engine.analyze_code_judge, req.code, req.error, req.output, req.mode, req.language, req.model_mode, req.user_question)
+    result = await parallel_runtime.llm_task(ai_engine.analyze_code_judge, req.code, req.error, req.output, req.mode, req.language, req.model_mode, req.user_question)
+    if isinstance(result, dict) and result.get("explanation"):
+        session_memory.remember(
+            "analysis", req.mode,
+            f"bug at line {result.get('line')}: {str(result.get('explanation'))[:220]}",
+        )
+    return result
 
 
 @app.post("/ai/patch")
@@ -493,6 +510,34 @@ async def compact_context(req: ContextCompactRequest):
 async def phrase_prompt(req: PhrasePromptRequest):
     phrased = await parallel_runtime.llm_task(ai_engine.phrase_user_prompt, req.message, req.execution_logs, req.model_mode)
     return {"phrased": phrased}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Session memory — TTL-evicted context store for the current session
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/session/memory")
+async def session_memory_list():
+    return {"stats": session_memory.stats(), "entries": session_memory.list_entries()}
+
+
+@app.post("/session/memory/clear")
+async def session_memory_clear():
+    removed = session_memory.clear()
+    return {"cleared": removed}
+
+
+@app.delete("/session/memory/{entry_id}")
+async def session_memory_delete(entry_id: str):
+    ok = session_memory.remove(entry_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="No such entry")
+    return {"removed": entry_id}
+
+
+@app.post("/session/memory/sweep")
+async def session_memory_sweep():
+    return {"removed": session_memory.sweep(), "stats": session_memory.stats()}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
