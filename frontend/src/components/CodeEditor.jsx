@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import hljs from 'highlight.js/lib/core'
 import python from 'highlight.js/lib/languages/python'
 import OmniEditCard from './OmniEditCard.jsx'
+import TabBar from './TabBar.jsx'
 
 hljs.registerLanguage('python', python)
 
@@ -222,6 +223,12 @@ export default function CodeEditor({
   onTabSelect,
   onTabClose,
   onNewTab,
+  onTabRename,
+  onTabReorder,
+  onTabTogglePin,
+  onTabCloseOthers,
+  onTabCloseRight,
+  onTabCloseAll,
 }) {
   const displayLang = language === 'python' ? 'Python 3' : 'C++17'
   const lines = code.split('\n')
@@ -247,29 +254,21 @@ export default function CodeEditor({
     }
   }
 
-  // Tab bar: multi-tab or single-tab fallback
+  // Tab bar: full VS Code-style multi-tab, or single-tab fallback (LLD passes no tabs)
   const tabBar = tabs && tabs.length > 0 ? (
-    <div className="editor-tabs">
-      {tabs.map(tab => (
-        <div
-          key={tab.id}
-          className={`file-tab${tab.id === activeTabId ? ' active' : ''}`}
-          onClick={() => onTabSelect?.(tab.id)}
-          title={tab.name}
-        >
-          <FileCode2 size={13} />
-          <span>{tab.name}</span>
-          {tabs.length > 1 && (
-            <button
-              className="tab-close-btn"
-              onClick={e => { e.stopPropagation(); onTabClose?.(tab.id) }}
-              title="Close tab"
-            >×</button>
-          )}
-        </div>
-      ))}
-      <button className="tab-add-btn" onClick={onNewTab} title="New file">+</button>
-    </div>
+    <TabBar
+      tabs={tabs}
+      activeTabId={activeTabId}
+      onSelect={onTabSelect}
+      onClose={onTabClose}
+      onNewTab={onNewTab}
+      onRename={onTabRename}
+      onReorder={onTabReorder}
+      onTogglePin={onTabTogglePin}
+      onCloseOthers={onTabCloseOthers}
+      onCloseRight={onTabCloseRight}
+      onCloseAll={onTabCloseAll}
+    />
   ) : (
     <div className="editor-tabs">
       <div className="file-tab active"><FileCode2 size={15} /> {title} <small>{displayLang}</small></div>

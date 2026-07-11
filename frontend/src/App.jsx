@@ -8,7 +8,7 @@ import SystemDesignMode from './components/SystemDesignMode.jsx'
 import InterviewMode from './components/InterviewMode.jsx'
 import ContextPanel from './components/ContextPanel.jsx'
 import SplashScreen from './components/SplashScreen.jsx'
-import { analyzeCode, analyzeComplexity, explainRunResult, generatePatch, getStarterCode, runCodeOnServer, runStressTest, validateSystemDesign } from './api.js'
+import { analyzeCode, analyzeComplexity, explainRunResult, generatePatch, getStarterCode, runCodeOnServer, runStressTest, validateSystemDesign, writeFsFile } from './api.js'
 
 // ── WA helpers ────────────────────────────────────────────────────────────────
 function normalizeOut(s) {
@@ -80,8 +80,9 @@ export default function App() {
   const [activeMode, setActiveMode] = useState('DSA')
   const prevModeRef = useRef('DSA')
 
-  // ── Multi-file tab management ──────────────────────────────────
-  const [tabs, setTabs] = useState([{ id: 'main', name: 'main.py', content: '', path: null }])
+  // ── Multi-file tab management (VS Code-style) ─────────────────
+  // tab: { id, name, content, path, savedContent } — dirty = content !== savedContent
+  const [tabs, setTabs] = useState([{ id: 'main', name: 'main.py', content: '', path: null, savedContent: '' }])
   const [activeTabId, setActiveTabId] = useState('main')
   const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0]
   const code = activeTab?.content ?? ''
@@ -97,12 +98,14 @@ export default function App() {
 
   const selectTab = useCallback((tabId) => setActiveTabId(tabId), [])
 
+  const freshTab = () => ({ id: 'tab-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), name: 'untitled.py', content: '', path: null, savedContent: '' })
+
   const closeTab = useCallback((tabId) => {
     setTabs(prev => {
       const idx = prev.findIndex(t => t.id === tabId)
       const next = prev.filter(t => t.id !== tabId)
       if (next.length === 0) {
-        const fallback = { id: 'main-' + Date.now(), name: 'main.py', content: '', path: null }
+        const fallback = { ...freshTab(), name: 'main.py' }
         setActiveTabId(fallback.id)
         return [fallback]
       }
@@ -111,11 +114,111 @@ export default function App() {
     })
   }, [])
 
-  const newTab = useCallback(() => {
-    const id = 'tab-' + Date.now()
-    setTabs(prev => [...prev, { id, name: 'untitled.py', content: '', path: null }])
-    setActiveTabId(id)
+  const closeOtherTabs = useCallback((tabId) => {
+    setTabs(prev => prev.filter(t => t.id === tabId))
+    setActiveTabId(tabId)
   }, [])
+
+  const closeTabsToRight = useCallback((tabId) => {
+    setTabs(prev => {
+      const idx = prev.findIndex(t => t.id === tabId)
+      if (idx === -1) return prev
+      const next = prev.slice(0, idx + 1)
+      setActiveTabId(curId => next.some(t => t.id === curId) ? curId : tabId)
+      return next
+    })
+  }, [])
+
+  const closeAllTabs = useCallback(() => {
+    const fallback = { ...freshTab(), name: 'main.py' }
+    setTabs([fallback])
+    setActiveTabId(fallback.id)
+  }, [])
+
+  const reorderTabs = useCallback((fromId, toId) => {
+    if (fromId === toId) return
+    setTabs(prev => {
+      const from = prev.findIndex(t => t.id === fromId)
+      const to = prev.findIndex(t => t.id === toId)
+      if (from === -1 || to === -1) return prev
+      const next = [...prev]
+      const [moved] = next.splice(from, 1)
+      next.splice(to, 0, moved)
+      return next
+    })
+  }, [])
+
+  const renameTab = useCallback((tabId, name) => {
+    const clean = name.trim()
+    if (!clean) return
+    setTabs(prev => prev.map(t => t.id === tabId ? { ...t, name: clean } : t))
+  }, [])
+
+  const saveTab = useCallback(async (tabId) => {
+    const tab = tabs.find(t => t.id === tabId)
+    if (!tab) return
+    if (tab.path) {
+      try {
+        await writeFsFile(tab.path, tab.content)
+        setTabs(prev => prev.map(t => t.id === tabId ? { ...t, savedContent: t.content } : t))
+      } catch { /* backend down — stay dirty */ }
+    } else {
+      // untitled: nothing on disk — mark clean so the dot clears
+      setTabs(prev => prev.map(t => t.id === tabId ? { ...t, savedContent: t.content } : t))
+    }
+  }, [tabs])
+
+  const newTab = useCallback(() => {
+    const t = freshTab()
+    setTabs(prev => [...prev, t])
+    setActiveTabId(t.id)
+  }, [])
+
+  const togglePinTab = useCallback((tabId) => {
+    setTabs(prev => prev.map(t => t.id === tabId ? { ...t, pinned: !t.pinned } : t))
+  }, [])
+
+  // Cycle tabs relative to the active one (dir: +1 / -1)
+  const cycleTab = useCallback((dir) => {
+    setTabs(prev => {
+      const idx = prev.findIndex(t => t.id === activeTabId)
+      if (idx !== -1 && prev.length > 1) {
+        setActiveTabId(prev[(idx + dir + prev.length) % prev.length].id)
+      }
+      return prev
+    })
+  }, [activeTabId])
+
+  // ── VS Code-style keyboard shortcuts ────────────────────────────
+  // ⌘/Ctrl+S save · ⌥T new · ⌥W close · Ctrl(+Shift)+Tab cycle · ⌥1-9 jump
+  useEffect(() => {
+    if (activeMode !== 'DSA') return
+    const onKey = (e) => {
+      const mod = e.metaKey || e.ctrlKey
+      if (mod && e.key === 's') {
+        e.preventDefault()
+        saveTab(activeTabId)
+      } else if (e.altKey && (e.key === 't' || e.code === 'KeyT')) {
+        e.preventDefault()
+        newTab()
+      } else if (e.altKey && (e.key === 'w' || e.code === 'KeyW')) {
+        e.preventDefault()
+        closeTab(activeTabId)
+      } else if (e.ctrlKey && e.key === 'Tab') {
+        e.preventDefault()
+        cycleTab(e.shiftKey ? -1 : 1)
+      } else if (e.altKey && /^[1-9]$/.test(e.key)) {
+        e.preventDefault()
+        const idx = Number(e.key) - 1
+        setTabs(prev => {
+          if (prev[idx]) setActiveTabId(prev[idx].id)
+          return prev
+        })
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [activeMode, activeTabId, saveTab, newTab, closeTab, cycleTab])
 
   const [stdin, setStdin] = useState('')
   const [output, setOutput] = useState('')
@@ -160,7 +263,7 @@ export default function App() {
       if (existing) { setActiveTabId(existing.id); return }
       // Open as a new tab
       const id = 'tab-' + Date.now()
-      setTabs(prev => [...prev, { id, name: entry.name, content: entry.content || '', path: entry.path }])
+      setTabs(prev => [...prev, { id, name: entry.name, content: entry.content || '', path: entry.path, savedContent: entry.content || '' }])
       setActiveTabId(id)
     }
     // LLD mode: SystemDesignMode reads openedFile prop and manages its own tabs
@@ -534,11 +637,17 @@ export default function App() {
                     onDismissOmni={handleDismissOmni}
                     title={editorTitle}
                     language={language}
-                    tabs={tabs}
+                    tabs={tabs.map(t => ({ ...t, dirty: t.path ? t.content !== t.savedContent : false }))}
                     activeTabId={activeTabId}
                     onTabSelect={selectTab}
                     onTabClose={closeTab}
                     onNewTab={newTab}
+                    onTabRename={renameTab}
+                    onTabReorder={reorderTabs}
+                    onTabTogglePin={togglePinTab}
+                    onTabCloseOthers={closeOtherTabs}
+                    onTabCloseRight={closeTabsToRight}
+                    onTabCloseAll={closeAllTabs}
                   />
                 </div>
               </div>

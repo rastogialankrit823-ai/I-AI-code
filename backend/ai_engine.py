@@ -1758,6 +1758,91 @@ def _extract_relevant_functions(code: str, issue_line: int) -> tuple[str, int, s
     return '\n'.join(parts), insert_point, body_indent
 
 
+def _apply_patch_to_code(code: str, patch: Dict[str, Any]) -> str:
+    """Apply a patch dict to code and return the resulting source (mirrors frontend logic)."""
+    lines = code.split('\n')
+    action = str(patch.get("action", "REPLACE")).upper()
+    start = max(0, min(len(lines) - 1, int(patch.get("start_line", 1)) - 1))
+    end = max(start, min(len(lines) - 1, int(patch.get("end_line", patch.get("start_line", 1))) - 1))
+    snippet_lines = str(patch.get("code_snippet", "")).split('\n')
+    if action == "INSERT":
+        return '\n'.join(lines[:start] + snippet_lines + lines[start:])
+    if action == "DELETE":
+        return '\n'.join(lines[:start] + lines[end + 1:])
+    return '\n'.join(lines[:start] + snippet_lines + lines[end + 1:])
+
+
+def _validate_python_patch(original_code: str, patched_code: str, issue_line: int) -> Optional[str]:
+    """Validate a Python patch. Returns None if OK, else an error string.
+    Rejects: syntax errors, undefined names newly introduced, new self-recursion
+    inside a function that was previously non-recursive."""
+    import ast
+
+    try:
+        orig_tree = ast.parse(original_code)
+    except SyntaxError:
+        orig_tree = None
+    try:
+        new_tree = ast.parse(patched_code)
+    except SyntaxError as e:
+        return f"patch produces syntax error: {e.msg} at line {e.lineno}"
+
+    # Collect names defined at module scope in the original (functions, classes, top-level assignments, imports)
+    defined_names = set(dir(__builtins__)) if hasattr(__builtins__, '__dict__') else set()
+    defined_names |= {
+        'print', 'input', 'range', 'len', 'int', 'str', 'float', 'bool', 'list', 'dict',
+        'set', 'tuple', 'sum', 'min', 'max', 'abs', 'sorted', 'reversed', 'enumerate',
+        'zip', 'map', 'filter', 'any', 'all', 'open', 'iter', 'next', 'type', 'isinstance',
+        'True', 'False', 'None', '__name__', '__main__', 'sys', 'os', 're', 'math',
+        'collections', 'heapq', 'bisect', 'itertools', 'functools',
+    }
+    for node in ast.walk(new_tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            defined_names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            for tgt in node.targets:
+                if isinstance(tgt, ast.Name):
+                    defined_names.add(tgt.id)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                defined_names.add(alias.asname or alias.name.split('.')[0])
+
+    # Find all Name references not accounted for by locals — flag "call-like" names that look like typos of a defined name
+    def _fn_signature(tree):
+        """Return dict fn_name → (was_recursive, body_calls)."""
+        info = {}
+        if tree is None:
+            return info
+        for fn in ast.walk(tree):
+            if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                calls = set()
+                for c in ast.walk(fn):
+                    if isinstance(c, ast.Call) and isinstance(c.func, ast.Name):
+                        calls.add(c.func.id)
+                info[fn.name] = (fn.name in calls, calls)
+        return info
+
+    orig_fns = _fn_signature(orig_tree)
+    new_fns = _fn_signature(new_tree)
+    for fn_name, (was_rec, _orig_calls) in orig_fns.items():
+        if fn_name in new_fns:
+            is_rec_now, _ = new_fns[fn_name]
+            if is_rec_now and not was_rec:
+                return f"patch introduces self-recursion into non-recursive function {fn_name!r}"
+
+    # Undefined-name check: every call target must resolve to a defined name (or a common builtin/import)
+    for fn in ast.walk(new_tree):
+        if isinstance(fn, ast.Call) and isinstance(fn.func, ast.Name):
+            if fn.func.id not in defined_names:
+                # Fuzzy: is it a 1-edit typo of a defined name? (e.g. mai() → main())
+                candidates = [n for n in defined_names if isinstance(n, str) and abs(len(n) - len(fn.func.id)) <= 1 and n[:1] == fn.func.id[:1]]
+                if candidates:
+                    return f"patch calls undefined {fn.func.id!r} — did you mean {candidates[0]!r}?"
+                return f"patch calls undefined name {fn.func.id!r}"
+
+    return None
+
+
 def generate_omni_patch(code: str, analysis: Dict[str, Any], language: str = "python", model_mode: str = "main") -> Dict[str, Any]:
     """Omni-Edit & Patch — two-path: INSERT for missing logic, REPLACE for buggy lines."""
     # If the analysis came from a deterministic scanner, its patch is exact — no LLM needed.
@@ -1796,18 +1881,23 @@ def generate_omni_patch(code: str, analysis: Dict[str, Any], language: str = "py
 
     if is_missing:
         # ── PATH A: INSERT missing code ───────────────────────────────────────
-        # Ask the model: "what exact code is missing?" — plain text, no JSON
         step1_prompt = f"""Code mein kuch MISSING hai. Sirf woh {language} lines likho jo ADD karne hain.
 
 Problem: {explanation}
 
 {relevant_code}
 
+HARD CONSTRAINTS — if you break any, your answer is WRONG:
+1. Every function/variable name you use MUST already exist in the code above — no typos, no new names.
+2. If the buggy line is inside function F, do NOT call F() from inside its own body unless F was already recursive.
+3. Do NOT insert a call to `main()` unless the surrounding code already calls it that way.
+4. Do NOT duplicate any line that already exists in the code above.
+5. Your inserted lines must fix the *specific* bug — no scaffolding, no placeholder statements.
+
 BEFORE writing, silently verify:
-1. Which exact lines are missing? (base case / bounds check / state undo / return)
-2. Mentally insert your lines and re-trace the failing case — confirm correct output.
-3. Your lines must use ONLY variables/functions that already exist in the code above.
-4. Do NOT duplicate any line that already exists.
+- Which exact line(s) are missing? (base case / bounds check / state undo / return)
+- Mentally insert your lines and re-trace the failing case — confirm correct output.
+- Re-read your lines — is every identifier one that already exists?
 
 Rules: No explanation, no markdown. Output ONLY the missing lines. Indent with {repr(body_indent)}.""".strip()
 
@@ -1834,13 +1924,26 @@ Rules: No explanation, no markdown. Output ONLY the missing lines. Indent with {
                 fixed.append(body_indent + relative)
         missing_code = '\n'.join(fixed).strip()
 
-        return {
+        candidate = {
             "start_line": insert_point,
             "end_line": insert_point,
             "action": "INSERT",
             "code_snippet": missing_code,
             "available": True,
         }
+        if language == "python":
+            try:
+                patched = _apply_patch_to_code(code, candidate)
+                err = _validate_python_patch(code, patched, issue_line)
+                if err:
+                    return _offline_payload(
+                        "omni_patch",
+                        {"start_line": issue_line, "end_line": issue_line, "action": "INSERT", "code_snippet": "", "rejection_reason": err},
+                        model_mode=model_mode,
+                    )
+            except Exception:
+                pass
+        return candidate
 
     else:
         # ── PATH B: REPLACE the buggy line(s) ────────────────────────────────
@@ -1853,7 +1956,10 @@ MANDATORY — verify silently BEFORE answering:
 1. Identify the exact wrong expression on the buggy line (operator, bound, index, init value, formula).
 2. Write the corrected line(s). Change ONLY what the bug requires — keep variable names, structure, and indentation identical.
 3. Re-trace the failing case with your fix applied — confirm the expected output now comes out. If not, your fix is wrong; find the real change.
-4. Your snippet must not use any undefined variable, and must not break other callers of this function.
+4. HARD CONSTRAINTS:
+   - Every function/variable name in your snippet MUST already exist in the code (no typos: not `mai()` for `main()`, not `retrun` for `return`).
+   - Do NOT introduce a call from a function to itself unless it was already recursive.
+   - Do NOT break other callers or shadow existing names.
 
 Return: {{"start_line": {issue_line}, "end_line": <last original line replaced>, "action": "REPLACE", "code_snippet": "<corrected code>"}}
 
@@ -1898,6 +2004,19 @@ Context:
             if parsed["end_line"] < parsed["start_line"]:
                 parsed["end_line"] = parsed["start_line"]
 
+        # ── Safety net: validate the patch actually produces valid Python ────
+        if language == "python":
+            try:
+                patched = _apply_patch_to_code(code, parsed)
+                err = _validate_python_patch(code, patched, issue_line)
+                if err:
+                    return _offline_payload(
+                        "omni_patch",
+                        {"start_line": issue_line, "end_line": issue_line, "action": "REPLACE", "code_snippet": "", "rejection_reason": err},
+                        model_mode=model_mode,
+                    )
+            except Exception:
+                pass  # validator crashed → fall through, return patch as-is
         return parsed
 
 

@@ -2955,6 +2955,75 @@ button.run-panel-tab:hover:not(.active):not(:disabled) {
 [data-theme="light"] .settings-theme-option { background: rgba(15,29,52,.04); }
 [data-theme="light"] .settings-theme-option:hover { background: rgba(15,29,52,.07); }
 
+/* ── VS Code-style tab bar (shared: DSA editor + LLD workspace) ────── */
+.vtab-bar {
+  display: flex; align-items: stretch; height: 36px;
+  background: var(--tab-bar-bg, #1e1e1e);
+  border-bottom: 1px solid var(--border);
+  border-radius: 10px 10px 0 0;
+  overflow-x: auto; overflow-y: hidden; flex-shrink: 0;
+}
+.vtab-bar.compact { height: 32px; border-radius: 0; }
+.vtab-bar::-webkit-scrollbar { height: 3px; }
+.vtab-bar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.vtab {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 12px; cursor: pointer; flex-shrink: 0;
+  background: var(--tab-inactive-bg, #2a2a2a);
+  border-right: 1px solid var(--border);
+  color: var(--muted); font-size: 12.5px;
+  max-width: 180px; overflow: hidden;
+  user-select: none;
+  transition: background .12s, color .12s;
+}
+.vtab-bar.compact .vtab { padding: 0 10px; font-size: 12px; max-width: 160px; }
+.vtab:hover:not(.active) { background: var(--tab-hover-bg, #333); color: var(--text); }
+.vtab.active { background: var(--code-bg); color: var(--text); border-bottom: 2px solid var(--accent); }
+.vtab.drag-over { box-shadow: inset 3px 0 0 var(--accent); }
+.vtab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vtab-pin { color: var(--accent); flex-shrink: 0; transform: rotate(45deg); }
+.vtab-dirty { color: var(--orange, #ffb86c); font-size: 10px; flex-shrink: 0; }
+.vtab-close {
+  display: flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 3px;
+  background: transparent; border: none; color: var(--muted);
+  font-size: 14px; line-height: 1; padding: 0; cursor: pointer;
+  flex-shrink: 0; opacity: .7;
+}
+.vtab-close:hover { background: rgba(255,80,80,.2); color: #ff6060; opacity: 1; }
+.vtab-add {
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 100%; border: none; background: transparent;
+  color: var(--muted); font-size: 18px; cursor: pointer; flex-shrink: 0;
+  transition: color .12s;
+}
+.vtab-add:hover { color: var(--text); }
+.vtab-rename {
+  width: 110px; padding: 2px 5px;
+  background: var(--code-bg); color: var(--text);
+  border: 1px solid var(--accent); border-radius: 4px;
+  font-size: 12px; outline: none;
+}
+.vtab-menu {
+  position: fixed; z-index: 1000;
+  min-width: 170px; padding: 4px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; box-shadow: var(--shadow);
+}
+.vtab-menu-item {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; padding: 6px 10px;
+  background: transparent; border: none; border-radius: 5px;
+  color: var(--text); font-size: 12.5px; text-align: left; cursor: pointer;
+}
+.vtab-menu-item:hover { background: var(--accent); color: #fff; }
+.vtab-menu-key { color: var(--muted); font-size: 11px; margin-left: 16px; }
+.vtab-menu-item:hover .vtab-menu-key { color: rgba(255,255,255,.75); }
+
+[data-theme="light"] .vtab { background: var(--tab-inactive-bg); }
+[data-theme="light"] .vtab.active { background: var(--code-bg); }
+[data-theme="light"] .vtab-close:hover { background: rgba(207,34,46,.15); color: #cf222e; }
+
 /* ── LLD open-file tabs ────────────────────────────────────────────── */
 .lld-editor-tabs {
   display: flex; align-items: stretch; height: 34px;

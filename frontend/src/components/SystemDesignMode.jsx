@@ -12,6 +12,7 @@ import {
   runWorkspaceCommand, writeFsFile, writeWorkspaceFile
 } from '../api.js'
 import CodeEditor from './CodeEditor.jsx'
+import TabBar from './TabBar.jsx'
 
 const TYPE_ICON = {
   class: Layers, interface: Workflow, abstract: Activity,
@@ -152,6 +153,46 @@ export default function SystemDesignMode({ context, setContext, modelMode = 'mai
       setActiveTabId(cur => cur === tabId ? (next[Math.max(0, idx - 1)]?.id || next[0]?.id || null) : cur)
       return next
     })
+  }, [])
+
+  const closeOtherTabs = useCallback((tabId) => {
+    setOpenTabs(prev => prev.filter(t => t.id === tabId || t.pinned))
+    setActiveTabId(tabId)
+  }, [])
+
+  const closeTabsToRight = useCallback((tabId) => {
+    setOpenTabs(prev => {
+      const idx = prev.findIndex(t => t.id === tabId)
+      if (idx === -1) return prev
+      const next = prev.filter((t, i) => i <= idx || t.pinned)
+      setActiveTabId(cur => next.some(t => t.id === cur) ? cur : tabId)
+      return next
+    })
+  }, [])
+
+  const closeAllTabs = useCallback(() => {
+    setOpenTabs(prev => {
+      const next = prev.filter(t => t.pinned)
+      setActiveTabId(next[0]?.id || null)
+      return next
+    })
+  }, [])
+
+  const reorderTabs = useCallback((fromId, toId) => {
+    if (fromId === toId) return
+    setOpenTabs(prev => {
+      const from = prev.findIndex(t => t.id === fromId)
+      const to = prev.findIndex(t => t.id === toId)
+      if (from === -1 || to === -1) return prev
+      const next = [...prev]
+      const [moved] = next.splice(from, 1)
+      next.splice(to, 0, moved)
+      return next
+    })
+  }, [])
+
+  const togglePinTab = useCallback((tabId) => {
+    setOpenTabs(prev => prev.map(t => t.id === tabId ? { ...t, pinned: !t.pinned } : t))
   }, [])
 
   // Terminal
@@ -470,27 +511,20 @@ export default function SystemDesignMode({ context, setContext, modelMode = 'mai
 
           {/* File editor with open-file tabs */}
           <div className="lld-file-editor">
-            {/* Open-file tab bar */}
+            {/* Open-file tab bar (VS Code-style: reorder, pin, context menu) */}
             {openTabs.length > 0 && (
-              <div className="lld-editor-tabs">
-                {openTabs.map(tab => (
-                  <div
-                    key={tab.id}
-                    className={`lld-file-tab${tab.id === activeTabId ? ' active' : ''}`}
-                    onClick={() => setActiveTabId(tab.id)}
-                    title={tab.path}
-                  >
-                    <FileCode2 size={11} />
-                    <span>{tab.name}</span>
-                    {tab.dirty && <span className="lld-tab-dirty">●</span>}
-                    <button
-                      className="lld-tab-close"
-                      onClick={e => { e.stopPropagation(); closeTab(tab.id) }}
-                      title="Close"
-                    >×</button>
-                  </div>
-                ))}
-              </div>
+              <TabBar
+                tabs={openTabs}
+                activeTabId={activeTabId}
+                onSelect={setActiveTabId}
+                onClose={closeTab}
+                onReorder={reorderTabs}
+                onTogglePin={togglePinTab}
+                onCloseOthers={closeOtherTabs}
+                onCloseRight={closeTabsToRight}
+                onCloseAll={closeAllTabs}
+                compact
+              />
             )}
 
             {selectedFile ? (
