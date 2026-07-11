@@ -122,6 +122,16 @@ The stack uses 5173 (frontend), 8000 (backend), 8081 (llama). Stop conflicting s
 **Can I use it without the desktop app build?**
 Yes — `./scripts/start.sh` opens a standalone app-style window (no browser chrome) using Chrome/Edge/Brave, falling back to your default browser.
 
+## Uninstall
+
+```bash
+./scripts/uninstall.sh           # remove the desktop app + config, stop all services
+./scripts/uninstall.sh --purge   # also delete the model, llama.cpp build, venv, node_modules (~7 GB)
+./scripts/uninstall.sh --dry-run # preview what would be removed
+```
+
+Source files are always kept — delete the cloned folder to remove everything.
+
 ## Roadmap
 
 - [ ] Prebuilt signed installers (macOS `.dmg`, Linux AppImage, Windows)
