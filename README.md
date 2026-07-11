@@ -29,8 +29,8 @@ Interview-prep AI tools want a subscription and send your code to someone's clou
 ## Quick Start
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/i-and-ai-code.git
-cd i-and-ai-code
+git clone https://github.com/rastogialankrit823-ai/I-AI-code.git
+cd I-AI-code
 ./scripts/install.sh   # builds llama.cpp, downloads model (~2.3 GB), installs deps
 ./scripts/start.sh     # starts everything, opens the app window
 ```
