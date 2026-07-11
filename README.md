@@ -7,8 +7,7 @@
 
 *Runs a Qwen2.5-Coder model entirely on your laptop via [llama.cpp](https://github.com/ggml-org/llama.cpp).*
 
-<!-- demo.gif: paste problem → write buggy code → Run → AI finds the exact line → Apply Fix → green verdict -->
-<!-- ![demo](docs/demo.gif) -->
+![DSA demo — the AI finds the exact buggy line and generates a patch](docs/dsa-demo.gif)
 
 </div>
 
@@ -46,13 +45,20 @@ That's it. The installer optionally builds a **native desktop app** (dock icon, 
 
 ## What it looks like
 
-<!-- Screenshots: docs/dsa-mode.png, docs/lld-mode.png, docs/interview-mode.png -->
+### DSA Mode
+Paste a LeetCode problem, write your solution, hit Run. The AI compares your output against the expected answer, and when it's wrong, traces the code to find the *exact* line — including deep logic bugs like a missing backtrack in N-Queens.
 
-**DSA Mode** — paste a LeetCode problem into the context panel, write your solution, hit Run. The AI compares your output against the expected answer, and when it's wrong, traces the code to find the exact line — including deep logic bugs like a missing backtrack in N-Queens.
+![DSA mode — bug detection and patch flow](docs/dsa-demo.gif)
 
-**LLD Mode** — describe a design ("Design a parking lot"), and the structure panel auto-generates a class diagram. Tell the AI *"generate parking_lot.py"* and it writes the complete file into your workspace; open it and say *"add thread safety"* to patch in place. Run it in the built-in terminal.
+### LLD Mode
+Describe a design ("Design a parking lot") — the structure panel auto-generates a class diagram. Tell the AI *"generate parking_lot.py"* and it writes the complete file into your workspace; open it and say *"add thread safety"* to patch in place. Run it in the built-in terminal.
 
-**Interview Mode** — a timed mock interview: DSA problems run against full test suites with pass/fail per case; LLD problems are scored question-by-question by a rubric-based judge that verifies its own claims against your answer before scoring.
+![LLD mode — auto-generated class structure from a design brief](docs/lld-demo.gif)
+
+### Interview Mode
+Timed mock interviews: DSA problems run against full test suites with pass/fail per case; LLD problems are scored question-by-question by a rubric-based judge that verifies its own claims against your answer before scoring.
+
+![Interview mode — DSA mock with a 45-minute timer](docs/interview-demo.gif)
 
 ## Architecture
 

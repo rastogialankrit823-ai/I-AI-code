@@ -229,6 +229,7 @@ export default function CodeEditor({
   onTabCloseOthers,
   onTabCloseRight,
   onTabCloseAll,
+  hideTabs = false, // when parent already renders a file header, don't render our own
 }) {
   const displayLang = language === 'python' ? 'Python 3' : 'C++17'
   const lines = code.split('\n')
@@ -254,8 +255,8 @@ export default function CodeEditor({
     }
   }
 
-  // Tab bar: full VS Code-style multi-tab, or single-tab fallback (LLD passes no tabs)
-  const tabBar = tabs && tabs.length > 0 ? (
+  // Tab bar: full VS Code-style multi-tab, single-tab fallback, or hidden
+  const tabBar = hideTabs ? null : tabs && tabs.length > 0 ? (
     <TabBar
       tabs={tabs}
       activeTabId={activeTabId}

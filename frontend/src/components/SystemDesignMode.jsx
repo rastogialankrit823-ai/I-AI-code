@@ -549,6 +549,7 @@ export default function SystemDesignMode({ context, setContext, modelMode = 'mai
                           setCode={setFileContent}
                           title={selectedFile.name}
                           language={extToLang(fileExt)}
+                          hideTabs
                         />
                       </div>
                     : <textarea className="lld-plain-editor" value={fileContent}
