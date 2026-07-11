@@ -1,6 +1,5 @@
-import { Check, Code2, Cpu, Globe, Moon, Settings, Sun, Trophy, X } from 'lucide-react'
+import { Check, Code2, Cpu, Moon, Settings, Sun, Trophy, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { getAppSettings, setAILanguage } from '../api.js'
 import FileExplorer from './FileExplorer.jsx'
 
 export function applyTheme(theme) {
@@ -14,20 +13,13 @@ const modes = [
   { id: 'Interview',     label: 'Interview Mode', sub: 'Mock interviews',      icon: Trophy },
 ]
 
-const LANGS = [
-  { id: 'hinglish', label: 'Hinglish', sample: '"Bro, yahan base case missing hai"' },
-  { id: 'english',  label: 'English',  sample: '"Bro, the base case is missing here"' },
-]
-
 const THEMES = [
   { id: 'dark',  label: 'Dark',  icon: Moon },
   { id: 'light', label: 'Light', icon: Sun },
 ]
 
 function SettingsPopover({ onClose }) {
-  const [lang, setLang] = useState(localStorage.getItem('ai_lang') || 'hinglish')
   const [theme, setTheme] = useState(localStorage.getItem('app_theme') || 'dark')
-  const [saving, setSaving] = useState(false)
   const ref = useRef(null)
 
   const pickTheme = (id) => {
@@ -36,13 +28,6 @@ function SettingsPopover({ onClose }) {
     applyTheme(id)
   }
 
-  // Sync from backend on open (backend persists across restarts)
-  useEffect(() => {
-    getAppSettings()
-      .then(s => { if (s.language) { setLang(s.language); localStorage.setItem('ai_lang', s.language) } })
-      .catch(() => {})
-  }, [])
-
   // Close on outside click
   useEffect(() => {
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose() }
@@ -50,38 +35,11 @@ function SettingsPopover({ onClose }) {
     return () => document.removeEventListener('mousedown', handler)
   }, [onClose])
 
-  const pick = async (id) => {
-    if (id === lang || saving) return
-    setSaving(true)
-    try {
-      await setAILanguage(id)
-      setLang(id)
-      localStorage.setItem('ai_lang', id)
-    } catch { /* backend down — keep old */ }
-    finally { setSaving(false) }
-  }
-
   return (
     <div className="settings-pop" ref={ref}>
       <div className="settings-pop-header">
         <Settings size={13} /> Settings
         <button className="settings-pop-close" onClick={onClose}><X size={12} /></button>
-      </div>
-      <div className="settings-pop-section">
-        <div className="settings-pop-label"><Globe size={12} /> AI Answer Language</div>
-        {LANGS.map(l => (
-          <button
-            key={l.id}
-            className={`settings-lang-option${lang === l.id ? ' active' : ''}`}
-            onClick={() => pick(l.id)}
-            disabled={saving}
-          >
-            <span className="settings-lang-name">{l.label}</span>
-            <span className="settings-lang-sample">{l.sample}</span>
-            {lang === l.id && <Check size={13} className="settings-lang-check" />}
-          </button>
-        ))}
-        <div className="settings-pop-hint">Applies to all AI replies — explanations, hints, feedback, judge.</div>
       </div>
       <div className="settings-pop-section">
         <div className="settings-pop-label"><Sun size={12} /> Theme</div>

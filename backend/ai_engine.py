@@ -86,55 +86,22 @@ DYNAMIC_STRESS_TEST = True
 DYNAMIC_MISTAKE_MEMORY = True
 DYNAMIC_DESIGN_RISK_RADAR = True
 
-# ── AI language setting (hinglish | english) ──────────────────────────────────
-_HINGLISH_STYLE = """You are Bro, a Hinglish coding assistant.
-Reply in Hinglish: Hindi grammar + English tech words (variable names, Big-O, keywords stay English).
-Example: "Bro, yahan base case missing hai — if n==0 return kar."
-When asked for JSON: return ONLY valid JSON, no markdown.""".strip()
-
-_ENGLISH_STYLE = """You are Bro, a friendly expert coding assistant.
+# ── AI reply style (English) ──────────────────────────────────────────────────
+BRO_STYLE = """You are Bro, a friendly expert coding assistant.
 Reply in clear, concise English. Casual tone, technically precise.
 Example: "Bro, the base case is missing here — add `if n == 0: return`."
 When asked for JSON: return ONLY valid JSON, no markdown.""".strip()
 
-_APP_SETTINGS_PATH = os.getenv("APP_SETTINGS_PATH", "./app_settings.json")
-
-AI_LANGUAGE = "hinglish"
-BRO_STYLE = _HINGLISH_STYLE
+AI_LANGUAGE = "english"
 
 
-def set_language(lang: str) -> str:
-    """Switch every AI reply between Hinglish and English. Persists across restarts."""
-    global AI_LANGUAGE, BRO_STYLE
-    lang = "english" if str(lang).strip().lower().startswith("en") else "hinglish"
-    AI_LANGUAGE = lang
-    BRO_STYLE = _ENGLISH_STYLE if lang == "english" else _HINGLISH_STYLE
-    try:
-        with open(_APP_SETTINGS_PATH, "w") as f:
-            json.dump({"language": lang}, f)
-    except Exception:
-        pass
-    return lang
+def set_language(_lang: str = "english") -> str:
+    """Kept for API compatibility — replies are always English."""
+    return "english"
 
 
 def get_language() -> str:
-    return AI_LANGUAGE
-
-
-def _hi_en(hi: str, en: str) -> str:
-    """Pick the deterministic (non-LLM) message matching the current language."""
-    return en if AI_LANGUAGE == "english" else hi
-
-
-def _load_language() -> None:
-    try:
-        with open(_APP_SETTINGS_PATH) as f:
-            set_language(json.load(f).get("language", "hinglish"))
-    except Exception:
-        pass
-
-
-_load_language()
+    return "english"
 
 
 MAX_CODE_CHARS = 20000
@@ -274,7 +241,7 @@ def _try_llamacpp_url(url: str, prompt: str, timeout: int, model_mode: str, max_
     payload = {
         "model": resolve_model(model_mode),
         "messages": [
-            {"role": "system", "content": ("You are Bro, a concise English coding assistant. Respond in clear English. Follow the output format exactly." if AI_LANGUAGE == "english" else "You are Bro, a concise Hinglish coding assistant. Respond in Hinglish (Hindi structure + English technical words). Follow the output format exactly.")},
+            {"role": "system", "content": "You are Bro, a concise English coding assistant. Respond in clear English. Follow the output format exactly."},
             {"role": "user", "content": prompt},
         ],
         "temperature": LLAMACPP_TEMPERATURE,
@@ -296,19 +263,7 @@ def _try_llamacpp_url(url: str, prompt: str, timeout: int, model_mode: str, max_
     return str(data.get("content") or data.get("response") or "").strip() or None
 
 
-def _localize_prompt(prompt: str) -> str:
-    """English mode: neutralize Hinglish instructions across ALL prompts centrally."""
-    if AI_LANGUAGE != "english":
-        return prompt
-    return (prompt
-            .replace("Hinglish mein", "in English")
-            .replace("in Hinglish", "in English")
-            .replace("Hinglish ok", "English only")
-            .replace("Hinglish", "English"))
-
-
 def _call_llamacpp(prompt: str, timeout: int = LLM_TIMEOUT_SECONDS, model_mode: str = "main", max_tokens: int = LLAMACPP_MAX_TOKENS) -> Optional[str]:
-    prompt = _localize_prompt(prompt)
     """Call a local llama.cpp server with automatic port fallback."""
     prompt = _trim_prompt(prompt)
     primary_url = resolve_llamacpp_url(model_mode)
@@ -467,7 +422,7 @@ def _repair_unavailable(error: str, model_mode: str = "main") -> Dict[str, Any]:
             "type": "unavailable",
             "problem": "AI repair gap unavailable",
             "fix": "",
-            "why": "Bro, real fix ke liye LLM connect hona zaroori hai. Error panel ka raw compiler output dekho.",
+            "why": "Bro, connect the LLM to get a real fix. Check the raw compiler output in the error panel.",
             "confidence": 0.0,
         },
         model_mode=model_mode,
@@ -487,7 +442,7 @@ def generate_starter_code(mode: str = "DSA", language: str = "cpp", context: str
   "title": "main.cpp",
   "code": "minimal starter code only, no solved demo",
   "stdin": "optional sample stdin derived from context, otherwise empty",
-  "note": "short Hinglish note"
+  "note": "short English note"
 }
 """.strip()
     prompt = f"""
@@ -573,7 +528,7 @@ Code:
 
 
 def get_repair_fix(code: str, error: str, mode: str = "DSA", language: str = "cpp", model_mode: str = "main") -> Dict[str, Any]:
-    schema = """{"line":1,"type":"syntax|runtime|logic","problem":"...","fix":"...","why":"Hinglish reason","confidence":0.9,"patch":{"operation":"replace|insert_before|insert_after|delete","start_line":1,"end_line":1,"replacement":"fixed code"}}""".strip()
+    schema = """{"line":1,"type":"syntax|runtime|logic","problem":"...","fix":"...","why":"short reason","confidence":0.9,"patch":{"operation":"replace|insert_before|insert_after|delete","start_line":1,"end_line":1,"replacement":"fixed code"}}""".strip()
     numbered_code = _prepare_code(code)
     prompt = f"""{BRO_STYLE}
 Return ONLY JSON: {schema}
@@ -599,7 +554,7 @@ Compiler/runtime error:
     parsed.setdefault("type", "unknown")
     parsed.setdefault("problem", "Issue found")
     parsed.setdefault("fix", "")
-    parsed.setdefault("why", "Bro, yaha patch needed hai.")
+    parsed.setdefault("why", "Bro, a patch is needed here.")
     parsed.setdefault("confidence", 0.5)
     if not isinstance(parsed.get("patch"), dict):
         parsed["patch"] = {
@@ -621,24 +576,24 @@ Compiler/runtime error:
 
 
 def _extract_line_cards(reply: str, model_mode: str = "main") -> list:
-    """AI-based: extract inline editor cards from a Hinglish chat reply that references line numbers."""
+    """AI-based: extract inline editor cards from a chat reply that references line numbers."""
     if not reply or not re.search(r'[Ll]ine[s]?\s+\d+', reply):
         return []
     prompt = f"""{BRO_STYLE}
-Niche diye gaye chat reply mein "Line X mein..." ya "Line X-Y mein..." type ke references hain.
-Unhe extract karke ONLY a JSON array return karo. Agar koi line reference nahi hai toh return [].
+The chat reply below contains references like "Line X..." or "Lines X-Y...".
+Extract them and return ONLY a JSON array. If there are no line references, return [].
 
 Reply:
 {reply}
 
 Output format (ONLY JSON array, nothing else):
-[{{"line": <first line number>, "title": "<function name ya 5-word summary>", "explanation": "<full content jo us line ke baare mein kaha gaya hai>"}}]
+[{{"line": <first line number>, "title": "<function name or 5-word summary>", "explanation": "<the full content said about that line>"}}]
 
 Rules:
 - line: "Line 5" → 5, "Line 5-15" → 5
-- title: backtick mein jo naam hai woh, warna pehle 5 words of explanation
-- explanation: exactly woh content jo us line reference ke baad aata hai, next line reference se pehle tak
-- Skip karo agar explanation 10 words se kam hai""".strip()
+- title: the backticked name if present, else the first 5 words of the explanation
+- explanation: exactly the content following that line reference, up to the next one
+- Skip it if the explanation is under 10 words""".strip()
 
     raw = _call_llamacpp(prompt, timeout=30, model_mode=model_mode, max_tokens=1024)
     if not raw:
@@ -675,7 +630,7 @@ def chat(message: str, mode: str = "DSA", code: str = "", context: str = "", use
 Mode: {mode}{code_section}{history_section}
 
 User: {message}
-Reply in plain Hinglish text (NOT JSON). Reference line numbers when relevant. Keep it concise.""".strip()
+Reply in plain English text (NOT JSON). Reference line numbers when relevant. Keep it concise.""".strip()
 
     raw = _call_llamacpp(prompt, timeout=60, model_mode=model_mode, max_tokens=640)
     if not raw:
@@ -817,16 +772,16 @@ def explain_code(message: str, code: str, mode: str = "DSA", model_mode: str = "
     """Return explanation cards, one per function/section, for inline display in the editor."""
     numbered = _prepare_code(code)
     prompt = f"""{BRO_STYLE}
-Niche diye gaye code mein se EACH function ke liye ek JSON object banao.
+Create one JSON object for EACH function in the code below.
 Return ONLY a JSON array. No markdown. No extra text.
 
 Each object:
-  "line": <line number jahan function shuru hota hai>,
+  "line": <line number where the function starts>,
   "title": "<function name — short kaam>",
-  "explanation": "<Hinglish, MAX 3 sentences: kya karta hai, key params/return, complexity>"
+  "explanation": "<English, MAX 3 sentences: what it does, key params/return, complexity>"
 
 Example:
-[{{"line": 1, "title": "isSafe — bounds check", "explanation": "Bro, row aur col matrix ke andar hai ya nahi check karta hai. n = len(mat) se size leta hai, dono 0 se n-1 ke beech hone chahiye. Base guard hai recursion ka."}},{{"line": 8, "title": "solve — recursive DFS", "explanation": "..."}}]
+[{{"line": 1, "title": "isSafe — bounds check", "explanation": "Bro, checks whether row and col are inside the matrix. Size comes from n = len(mat); both must be within 0..n-1. It is the base guard for the recursion."}},{{"line": 8, "title": "solve — recursive DFS", "explanation": "..."}}]
 
 Code:
 {numbered}""".strip()
@@ -883,7 +838,7 @@ def get_apply_guide(suggestion: Dict[str, Any], code: str = "", mode: str = "DSA
   "type": "speed|safety|balanced|design|test",
   "problem": "what this suggestion fixes",
   "fix": "small patch/pseudocode/change steps",
-  "why": "short Hinglish reason",
+  "why": "short reason",
   "confidence": 0.0,
   "patch": {
     "operation": "replace|insert_before|insert_after|delete",
@@ -915,7 +870,7 @@ Code/pseudocode:
 """.strip()
     parsed = _json_llm(prompt, "apply_guide", timeout=60, model_mode=model_mode, max_tokens=512)
     if not isinstance(parsed, dict) or not parsed.get("available", True):
-        return _offline_payload("apply_guide", {"line": 1, "type": "unavailable", "problem": "Apply guide unavailable", "fix": "", "why": "LLM connect karo, phir selected suggestion ka exact patch milega.", "confidence": 0.0}, model_mode=model_mode)
+        return _offline_payload("apply_guide", {"line": 1, "type": "unavailable", "problem": "Apply guide unavailable", "fix": "", "why": "Connect the LLM to get an exact patch for the selected suggestion.", "confidence": 0.0}, model_mode=model_mode)
     parsed.setdefault("line", 1)
     parsed.setdefault("type", str(suggestion.get("category", "balanced")).lower())
     parsed.setdefault("problem", suggestion.get("title", "Selected suggestion"))
@@ -973,7 +928,7 @@ Internet context:
         return _offline_payload("lld_question", {
             "title": "LLD Question Unavailable",
             "difficulty": difficulty,
-            "problem": "LLM connect karo phir LLD question generate hoga.",
+            "problem": "Connect the LLM to generate the LLD question.",
             "requirements": [], "constraints": [], "entities_hint": [], "followups": [],
         }, model_mode=model_mode)
     parsed.setdefault("title", "LLD Question")
@@ -991,7 +946,7 @@ def generate_system_diagram(context: str, code: str = "", pseudocode: str = "", 
     schema = """
 {
   "diagram_style": "class|sequence|component|layered",
-  "summary": "short Hinglish description",
+  "summary": "short description",
   "nodes": [
     {"id":"vehicle", "title":"Vehicle", "sub":"abstract class", "type":"class"}
   ],
@@ -1046,7 +1001,7 @@ def validate_system_design(context: str, diagram_text: str, code: str, pseudocod
 {
   "works": false,
   "diagram_style": "class/sequence/component/layered",
-  "summary": "concise Hinglish summary",
+  "summary": "concise summary",
   "gaps": [
     {"type":"LLD Repair Gap", "problem":"...", "where":"...", "fix":"...", "why":"..."}
   ],
@@ -1110,7 +1065,7 @@ def generate_unit_tests(code: str, requirement: str, language: str = "cpp", use_
     internet_context = _web_context(requirement, use_internet, max_results=3)
     schema = """
 {
-  "message": "short Hinglish message",
+  "message": "short message",
   "tests": [
     {"name":"...", "stdin":"...", "expected":"...", "why":"..."}
   ],
@@ -1139,7 +1094,7 @@ Code:
     parsed = _json_llm(prompt, "unit_tests", timeout=90, model_mode=model_mode)
     if not isinstance(parsed, dict) or not parsed.get("available", True):
         return _offline_payload("unit_tests", {"message": "Unit tests need LLM connection.", "tests": [], "test_file": ""}, model_mode=model_mode)
-    parsed.setdefault("message", "Bro, tests ready hain.")
+    parsed.setdefault("message", "Bro, tests are ready.")
     if not isinstance(parsed.get("tests"), list):
         parsed["tests"] = []
     parsed.setdefault("test_file", "")
@@ -1224,7 +1179,7 @@ def _quick_complexity_analysis(code: str) -> Dict[str, Any]:
     if has_sort:
         time = "O(n log n)"
         bottleneck = "sort"
-        reason = _hi_en("Bro, sorting dominant hai — O(n log n) guarantee.", "Bro, sorting dominates — O(n log n) guaranteed.")
+        reason = "Bro, sorting dominates — O(n log n) guaranteed."
 
     elif is_recursive and has_dp:
         # Memoised recursion — depends on state dimensions
@@ -1235,61 +1190,55 @@ def _quick_complexity_analysis(code: str) -> Dict[str, Any]:
             time = "O(n)"
             space = "O(n)"
         bottleneck = "memoised recursion"
-        reason = _hi_en("Bro, recursion + memo/DP hai — unique states * per-state work.", "Bro, memoised recursion/DP — unique states x per-state work.")
+        reason = "Bro, memoised recursion/DP — unique states x per-state work."
 
     elif is_recursive and rec_call_in_loop:
         # Recursive call inside a loop = up to n branches per level → factorial-ish
         # (N-Queens, permutations, combination search)
         time = "O(n!)"
         bottleneck = "backtracking (recursion in loop)"
-        reason = _hi_en(
-            "Bro, loop ke andar recursive call hai — har level pe n choices, exponential/factorial tree banta hai (backtracking pattern).",
-            "Bro, a recursive call inside a loop — n choices per level builds a factorial tree (backtracking pattern).",
-        )
+        reason = "Bro, a recursive call inside a loop — n choices per level builds a factorial tree (backtracking pattern).",
 
     elif is_recursive and is_multi_branch:
         # Branching recursion without memoisation → exponential
         time = f"O({max_branch}^n)"
         bottleneck = "branching recursion (no memo)"
-        reason = _hi_en(
-            f"Bro, {max_branch} recursive calls per frame — exponential tree banta hai. Memoisation ya DP se optimize kar sakte hain.",
-            f"Bro, {max_branch} recursive calls per frame — exponential tree. Memoisation or DP would optimize it.",
-        )
+        reason = f"Bro, {max_branch} recursive calls per frame — exponential tree. Memoisation or DP would optimize it.",
 
     elif is_recursive and has_loop_in_rec:
         time = "O(n²)"
         bottleneck = "recursion + inner loop"
-        reason = _hi_en("Bro, recursion ke andar loop bhi hai — likely O(n²) ya zyada.", "Bro, loop inside recursion — likely O(n²) or worse.")
+        reason = "Bro, loop inside recursion — likely O(n²) or worse."
 
     elif is_recursive and has_bsearch:
         time = "O(log n)"
         bottleneck = "binary-search recursion"
-        reason = _hi_en("Bro, har call problem half kar raha hai — O(log n).", "Bro, each call halves the problem — O(log n).")
+        reason = "Bro, each call halves the problem — O(log n)."
 
     elif is_recursive:
         time = "O(n)"
         bottleneck = "linear recursion"
-        reason = _hi_en("Bro, single recursive chain hai — O(n) depth.", "Bro, single recursive chain — O(n) depth.")
+        reason = "Bro, single recursive chain — O(n) depth."
 
     elif nested_hint or (loop_count >= 2 and not has_map):
         time = "O(n²)"
         bottleneck = "nested loop"
-        reason = _hi_en("Bro, nested loop — O(n²) repeated scan kar raha hai.", "Bro, nested loops — repeated O(n²) scans.")
+        reason = "Bro, nested loops — repeated O(n²) scans."
 
     elif loop_count >= 1 and has_bsearch:
         time = "O(log n)"
         bottleneck = "binary search"
-        reason = _hi_en("Bro, search space har step half ho raha hai.", "Bro, the search space halves every step.")
+        reason = "Bro, the search space halves every step."
 
     elif loop_count >= 1:
         time = "O(n)"
         bottleneck = "single pass"
-        reason = _hi_en("Bro, ek linear scan — O(n) hai.", "Bro, one linear scan — O(n).")
+        reason = "Bro, one linear scan — O(n)."
 
     else:
         time = "O(1)"
         bottleneck = "constant work"
-        reason = _hi_en("Bro, koi loop ya recursion nahi — constant time.", "Bro, no loops or recursion — constant time.")
+        reason = "Bro, no loops or recursion — constant time."
 
     # ── Space complexity (set only if not already set by memo branch) ─────────
     if not is_recursive or not has_dp:
@@ -1315,7 +1264,7 @@ def analyze_complexity(code: str, mode: str = "DSA", context: str = "", model_mo
     if not COMPLEXITY_USE_LLM:
         return _quick_complexity_analysis(code)
 
-    schema = '{"time_complexity":"O(n)","space_complexity":"O(1)","reason":"1-2 sentence Hinglish explanation","bottleneck":"what dominates"}'
+    schema = '{"time_complexity":"O(n)","space_complexity":"O(1)","reason":"1-2 sentence explanation","bottleneck":"what dominates"}'
     prompt = f"""{BRO_STYLE}
 Output ONLY valid JSON, nothing else.
 
@@ -1335,7 +1284,7 @@ MANDATORY PROCEDURE — do these checks silently BEFORE answering:
 
 Rules:
 - Standard Big-O only: O(1), O(log n), O(n), O(n log n), O(n^2), O(2^n), O(n!) etc.
-- reason: 1-2 sentences in Hinglish naming the structure you found. Example: "Bro, loop ke andar recursive call hai — n choices per level, factorial tree."
+- reason: 1-2 sentences naming the structure you found. Example: "Bro, recursive call inside a loop — n choices per level, factorial tree."
 - bottleneck: single English phrase like "backtracking recursion", "nested loop", "sort", "DP table".
 
 Code to analyse:
@@ -1356,7 +1305,7 @@ Code to analyse:
 def generate_stress_tests(code: str, context: str = "", count: int = 6, model_mode: str = "main") -> Dict[str, Any]:
     schema = """
 {
-  "message": "short Hinglish message",
+  "message": "short message",
   "tests": [
     {"name":"...", "stdin":"...", "expected":"optional expected output", "why":"..."}
   ]
@@ -1386,7 +1335,7 @@ Code:
     if not isinstance(tests, list):
         tests = []
     parsed["tests"] = tests[:max(1, min(int(count or 6), 12))]
-    parsed.setdefault("message", "Bro, stress tests ready hain.")
+    parsed.setdefault("message", "Bro, stress tests are ready.")
     return parsed
 
 
@@ -1439,7 +1388,7 @@ Return ONLY JSON:
 Rules:
 - Make prompts specific to the current mode/code/context.
 - Keep each under 45 characters.
-- Hinglish is allowed.
+- Plain, concise English.
 - Do not use the same static list every time.
 
 Mode: {mode}
@@ -1528,14 +1477,9 @@ def _detect_backtrack_asymmetry(code: str) -> Optional[Dict[str, Any]]:
             return {
                 "issue_type": "ERROR",
                 "line": add_line,
-                "explanation": _hi_en(
-                    f"Bro, backtracking bug — line {add_line} pe `{recv}.add({arg})` hai "
-                    f"par recursion ke baad iska undo missing hai. `{missing}` add karo "
-                    f"(line {anchor} ke saath), warna state permanently blocked rehti hai.",
-                    f"Bro, backtracking bug — line {add_line} does `{recv}.add({arg})` but never "
+                "explanation": f"Bro, backtracking bug — line {add_line} does `{recv}.add({arg})` but never "
                     f"undoes it after the recursive call. Add `{missing}` next to line {anchor}, "
-                    f"otherwise that state stays permanently blocked."
-                ),
+                    f"otherwise that state stays permanently blocked.",
                 "deterministic_patch": {
                     "start_line": anchor + 1,
                     "end_line": anchor + 1,
@@ -1554,12 +1498,8 @@ def _detect_backtrack_asymmetry(code: str) -> Optional[Dict[str, Any]]:
             return {
                 "issue_type": "ERROR",
                 "line": add_line,
-                "explanation": _hi_en(
-                    f"Bro, backtracking bug — line {add_line} pe `{recv}.append(...)` hai "
-                    f"par recursion ke baad `{recv}.pop()` missing hai — state grow hoti jaati hai.",
-                    f"Bro, backtracking bug — line {add_line} does `{recv}.append(...)` but "
-                    f"`{recv}.pop()` is missing after the recursive call — state keeps growing."
-                ),
+                "explanation": f"Bro, backtracking bug — line {add_line} does `{recv}.append(...)` but "
+                    f"`{recv}.pop()` is missing after the recursive call — state keeps growing.",
                 "deterministic_patch": {
                     "start_line": anchor + 1,
                     "end_line": anchor + 1,
@@ -1609,7 +1549,7 @@ MANDATORY PROCEDURE — do these steps silently BEFORE answering:
 STRICT OUTPUT RULES:
 - issue_type: ERROR (runtime/logic bug) | TLE (timeout) | OPTIMIZATION (suggest improvement) | QUESTION (no bug, just explanation)
 - line: the SINGLE line number of the root cause. Must match real code.
-- explanation: 1-2 sentences Hinglish, format: "Bro, line <N> pe `<exact code copied from that line>` mein bug hai — <what is wrong> — <corrected code> chahiye."
+- explanation: 1-2 sentences English, format: "Bro, line <N> has a bug in `<exact code copied from that line>` — <what is wrong> — needs <corrected code>."
 - The quoted code MUST be copied from the numbered code below, NOT from these instructions.
 - Say ONLY what your trace proves. Do NOT invent problems the error/output doesn't show.
 - If there is NO bug and user just asked a question → issue_type QUESTION, line=1.
@@ -1860,15 +1800,14 @@ def generate_omni_patch(code: str, analysis: Dict[str, Any], language: str = "py
     # ── Classify: missing logic vs bad line ───────────────────────────────────
     exp_lower = explanation.lower()
     missing_signals = [
-        "missing", "nahi hai", "nahi likha", "add karo", "add kar",
+        "missing", "not present", "not written", "should add", "needs to add",
         "return missing", "no base", "no return",
-        "check missing", "condition missing", "handle nahi",
-        "chahiye", "likhna chahiye", "hona chahiye",
+        "check missing", "condition missing", "not handled", "needs ",
     ]
     # "base case" only triggers INSERT if it's truly missing, not if the value is wrong
     replace_signals = [
-        "galat", "wrong", "incorrect", "change", "replace", "update",
-        "fix karo", "set to", "hona chahiye 0", "should be 0",
+        "wrong", "incorrect", "change", "replace", "update",
+        "set to", "should be 0",
         "should be", "instead of",
     ]
     has_replace_hint = any(kw in exp_lower for kw in replace_signals)
@@ -1881,7 +1820,7 @@ def generate_omni_patch(code: str, analysis: Dict[str, Any], language: str = "py
 
     if is_missing:
         # ── PATH A: INSERT missing code ───────────────────────────────────────
-        step1_prompt = f"""Code mein kuch MISSING hai. Sirf woh {language} lines likho jo ADD karne hain.
+        step1_prompt = f"""Something is MISSING in this code. Write ONLY the {language} lines that must be ADDED.
 
 Problem: {explanation}
 
@@ -2027,12 +1966,12 @@ def compact_chat_context(messages: List[Dict[str, str]], model_mode: str = "main
         for m in messages if isinstance(m, dict)
     )
     prompt = f"""{BRO_STYLE}
-Conversation history ko compress karke ek dense technical summary banao.
+Compress the conversation history into a dense technical summary.
 INSTRUCTIONS:
-1. Core problem constraints identify karo (e.g., N <= 10^5, Time Limit: 2.0s).
-2. Jo approaches fail hue unhe summarize karo (e.g., "O(N^2) DP ne TLE diya").
-3. Current focal point define karo (e.g., "User bottom-up DP implement kar raha hai, test case 4 fail ho raha hai").
-4. Output ONLY the raw Hinglish summary. No filler.
+1. Identify the core problem constraints (e.g., N <= 10^5, Time Limit: 2.0s).
+2. Summarize the approaches that failed (e.g., "O(N^2) DP got TLE").
+3. Define the current focal point (e.g., "User is implementing bottom-up DP, test case 4 is failing").
+4. Output ONLY the raw summary. No filler.
 
 Conversation history:
 {history_text}""".strip()
@@ -2043,12 +1982,12 @@ Conversation history:
 def phrase_user_prompt(raw_message: str, execution_logs: str = "", model_mode: str = "main") -> str:
     """Prompt Phraser — restructures informal user input into a structured directive."""
     prompt = f"""{BRO_STYLE}
-User ke informal message aur execution logs ko ek structured directive mein rewrite karo algorithmic judge ke liye.
+Rewrite the user's informal message and execution logs into a structured directive for an algorithmic judge.
 INSTRUCTIONS:
-1. Raw message aur logs padho.
-2. Intent samjho: explain chahiye, test case fail hua, ya optimization chahiye.
-3. Ek clear Hinglish directive likho — concise aur technical.
-4. ONLY the rewritten directive output karo.
+1. Read the raw message and logs.
+2. Understand the intent: wants an explanation, a failing test case, or an optimization.
+3. Write one clear directive — concise and technical.
+4. Output ONLY the rewritten directive.
 
 Raw user message: {raw_message}
 Execution logs: {execution_logs[:2000]}""".strip()
@@ -2221,11 +2160,11 @@ Return ONLY JSON: {{"answer": "..."}}
 Problem: {problem.get("title","")}: {problem.get("problem","")[:400]}
 Candidate asked: {question}
 
-Rules: 2-3 sentences max. Never reveal approach. Hinglish ok.""".strip()
+Rules: 2-3 sentences max. Never reveal the approach.""".strip()
     parsed = _json_llm(prompt, "interview_clarify", timeout=25, model_mode=model_mode)
     if not isinstance(parsed, dict) or not parsed.get("available", True):
         return {"answer": "Good question — check the constraints, edge cases ka dhyan rakho.", "available": True}
-    return {"answer": str(parsed.get("answer", "Constraints mein dekho.")), "available": True}
+    return {"answer": str(parsed.get("answer", "Check the constraints.")), "available": True}
 
 
 def generate_coding_hint(problem: Dict[str, Any], code: str, elapsed_min: int, model_mode: str = "main") -> Dict[str, Any]:
@@ -2242,13 +2181,13 @@ Code so far:
 Rules:
 - If code empty/barely started: give a directional hint as a Socratic QUESTION pointing toward the approach. Do NOT give algorithm.
 - If code is partially there: ask about the missing piece or edge case.
-- If code looks complete: set code_looks_done: true, hint = "Looks good! Koi edge case toh nahi chhuta?"
-- hint = 1 sentence question only. Hinglish ok.""".strip()
+- If code looks complete: set code_looks_done: true, hint = "Looks good! Any edge case you might have missed?"
+- hint = 1 sentence question only.""".strip()
     parsed = _json_llm(prompt, "interview_hint", timeout=25, model_mode=model_mode)
     if not isinstance(parsed, dict) or not parsed.get("available", True):
-        return {"hint": "Kya soch rahe ho approach ke baare mein?", "code_looks_done": False, "available": True}
+        return {"hint": "What approach are you thinking of?", "code_looks_done": False, "available": True}
     return {
-        "hint": str(parsed.get("hint", "Kya approach sochi hai?")),
+        "hint": str(parsed.get("hint", "What approach do you have in mind?")),
         "code_looks_done": bool(parsed.get("code_looks_done", False)),
         "available": True,
     }
@@ -2267,13 +2206,13 @@ Generate:
 1. Time/space complexity — "What is the time complexity and why?"
 2. Edge case — "What happens when [specific edge case from problem]?"
 3. Optimization — "How would you improve this if [bigger constraint]?"
-1 sentence each. Hinglish ok.""".strip()
+1 sentence each.""".strip()
     parsed = _json_llm(prompt, "review_questions", timeout=35, model_mode=model_mode)
     if not isinstance(parsed, dict) or not parsed.get("available", True):
-        return {"questions": ["Is solution ki time complexity kya hai aur kyun?", "Agar input empty ho toh kya hoga?", "O(n²) se better approach hai?"], "available": True}
+        return {"questions": ["What is the time complexity of this solution and why?", "What happens if the input is empty?", "Is there a better approach than O(n²)?"], "available": True}
     qs = parsed.get("questions", [])
     if not isinstance(qs, list): qs = []
-    qs = (list(qs) + ["Time complexity kya hai?", "Edge cases handle ho rahe hain?", "Optimize kaise karoge?"])[:3]
+    qs = (list(qs) + ["What is the time complexity?", "Are edge cases handled?", "How would you optimize?"])[:3]
     return {"questions": qs, "available": True}
 
 
@@ -2379,12 +2318,8 @@ def discuss_lld_answer(problem: Dict[str, Any], conversation: List[Dict[str, Any
     if not last_a or word_count < 2:
         return {
             "next_question": next_q, "is_done": is_last,
-            "brief_feedback": _hi_en(
-                "Bro, is answer mein evaluate karne layak kuch nahi hai. "
-                "Classes, relationships ya pattern ke baare mein kuch sentences likho.",
-                "Bro, there's nothing to evaluate in this answer. "
-                "Write a few sentences about the classes, relationships, or patterns."
-            ),
+            "brief_feedback": "Bro, there's nothing to evaluate in this answer. "
+                "Write a few sentences about the classes, relationships, or patterns.",
             "answer_score": 0,
             "available": True,
         }
@@ -2422,7 +2357,7 @@ Rules for each item:
 - relevant: is this item something THIS question asks about? (true/false)
 - addressed: does the answer actually cover it — in any wording, synonyms and examples count? (true/false)
 - quote: if addressed=true, copy the candidate's OWN words (short fragment) that prove it. If you cannot find such words, addressed must be false.
-- brief_feedback: 1-2 sentences — strongest part first, then the most important miss, naming the specific class/pattern/concept. Hinglish ok.""".strip()
+- brief_feedback: 1-2 sentences — strongest part first, then the most important miss, naming the specific class/pattern/concept.""".strip()
 
     parsed = _json_llm(prompt, "lld_discuss", timeout=75, model_mode=model_mode, max_tokens=600)
 
@@ -2469,14 +2404,12 @@ Rules for each item:
             # Nothing survived evidence verification — don't relay the model's
             # (often flattering) prose; state what was actually missing.
             expected = "; ".join(m.split(": ", 1)[-1] for m in missed_labels[:3]) or "specific classes/patterns"
-            feedback = _hi_en(
-                "Bro, answer mein reference points ka concrete evidence nahi mila — "
-                f"koi specific class/pattern naam nahi kiya. Expected cheezein: {expected}.",
+            feedback = (
                 "Bro, the answer shows no concrete evidence of the reference points — "
                 f"no specific class or pattern was named. Expected: {expected}."
             )
         if wrongs:
-            feedback += _hi_en(f" Galat claim: {wrongs[0][:120]}", f" Incorrect claim: {wrongs[0][:120]}")
+            feedback += f" Incorrect claim: {wrongs[0][:120]}"
         return {
             "next_question": next_q, "is_done": is_last,
             "brief_feedback": feedback,

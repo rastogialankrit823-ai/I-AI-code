@@ -530,14 +530,14 @@ export default function App() {
         } else if (isCorrect === false) {
           setVerdict({ expected: expectedVal, actual: actualOut })
           const expectedHint = ` Expected: "${expectedVal}", Got: "${actualOut}".`
-          const waError = `WRONG ANSWER: output "${actualOut}" galat hai.${expectedHint}`
-          const waQuestion = `WRONG ANSWER: actual="${actualOut}"${expectedHint} Problem: ${problemContext.substring(0, 500)}. Exact line find karo jahan wrong value assign hai.`
+          const waError = `WRONG ANSWER: output "${actualOut}" is incorrect.${expectedHint}`
+          const waQuestion = `WRONG ANSWER: actual="${actualOut}"${expectedHint} Problem: ${problemContext.substring(0, 500)}. Find the exact line where the wrong value is assigned.`
           backgroundJobs.push(
             analyzeCode(code, waError, actualOut, activeMode, language, modelMode, waQuestion)
               .then(async data => {
                 if (data.available !== false) {
                   handleOmniResult(data)
-                  const q = `Line ${data.line} pe kya bug hai? Expected vs actual behavior explain karo Hinglish mein.`
+                  const q = `What is the bug on line ${data.line}? Explain expected vs actual behavior.`
                   const ctx = await analyzeCode(code, '', '', activeMode, language, modelMode, q).catch(() => null)
                   if (ctx && ctx.available !== false) handleAddOmniCard({ ...ctx, issue_type: 'QUESTION' })
                 }

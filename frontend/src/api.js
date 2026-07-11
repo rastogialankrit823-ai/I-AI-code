@@ -140,9 +140,8 @@ export const createFsPath = (path, isDir = false) => jsonFetch('/files/create', 
 export const deleteFsPath = (path) => jsonFetch('/files/delete', { path })
 export const renameFsPath = (oldPath, newPath) => jsonFetch('/files/rename', { old_path: oldPath, new_path: newPath })
 
-// ── App settings: AI language ────────────────────────────────────────────
+// ── App settings ─────────────────────────────────────────────────────────
 export const getAppSettings = () => fetch(`${API_URL}/settings`).then(r => r.json())
-export const setAILanguage = (language) => jsonFetch('/settings/language', { language })
 
 // ── Session memory (TTL-evicted context store) ───────────────────────────
 export const getSessionMemory = () => fetch(`${API_URL}/session/memory`).then(r => r.json())

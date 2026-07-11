@@ -22,7 +22,7 @@ Interview-prep AI tools want a subscription and send your code to someone's clou
 | 🧩 **DSA Mode** | Write, run & debug — AI traces your logic to the exact buggy line, explains time/space complexity, one-click patches |
 | 🏗 **LLD Mode** | Low-level-design workspace — AI generates class structures, writes & patches code files, built-in terminal |
 | 🎤 **Interview Mode** | 20 DSA + 20 LLD mock problems, full test suites, a rubric-based AI judge, 45-min timer |
-| 🌐 **Bilingual AI** | Replies in English or Hinglish — your choice |
+| 🌐 **Clear English replies** | Concise, casual, technically precise |
 | 🎨 **Themes** | Dark & light, GitHub-style syntax highlighting |
 
 ## Quick Start

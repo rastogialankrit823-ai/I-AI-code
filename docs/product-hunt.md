@@ -28,7 +28,7 @@ Developer Tools · Artificial Intelligence · Open Source
 | 2 | `dsa-mode.png` | DSA Mode — AI traces your logic and pinpoints the bug, with a one-click fix |
 | 3 | `lld-mode.png` | LLD Mode — AI generates class structures and complete code files from your design brief |
 | 4 | `interview-mode.png` | Interview Mode — timed mocks with full test suites and a rubric-based AI judge |
-| 5 | `light-theme-settings.png` | Light & dark themes; AI replies in English or Hinglish |
+| 5 | `light-theme-settings.png` | Light & dark themes with GitHub-style syntax highlighting |
 
 ## Maker comment (post immediately at launch)
 

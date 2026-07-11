@@ -876,19 +876,10 @@ async def fs_rename(req: FsRenameReq):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  App settings — AI language (hinglish | english)
+#  App settings
 # ══════════════════════════════════════════════════════════════════════════════
-
-class LanguageReq(BaseModel):
-    language: str
-
 
 @app.get("/settings")
 async def get_settings():
-    return {"language": ai_engine.get_language()}
-
-
-@app.post("/settings/language")
-async def set_language(req: LanguageReq):
-    lang = ai_engine.set_language(req.language)
-    return {"language": lang}
+    # AI replies are English-only; key kept for older frontends
+    return {"language": "english"}

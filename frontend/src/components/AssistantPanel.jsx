@@ -22,9 +22,9 @@ function calledFunctions(code, fns) {
 // Time-based escalation so the status never looks frozen on slow CPU inference
 function escalate(phase, secs) {
   if (secs < 8) return phase
-  if (secs < 25) return `${phase} — model likh raha hai`
-  if (secs < 60) return `${phase} — bada answer hai, thoda ruko`
-  return `${phase} — CPU inference slow hai, almost done`
+  if (secs < 25) return `${phase} — model is writing`
+  if (secs < 60) return `${phase} — long answer, hang tight`
+  return `${phase} — CPU inference is slow, almost done`
 }
 
 export default function AssistantPanel({
@@ -248,10 +248,10 @@ export default function AssistantPanel({
         <button className="assistant-action-btn" onClick={() => send('debug this')} disabled={busy}>
           <Bug size={12} /> Debug
         </button>
-        <button className="assistant-action-btn" onClick={() => send('optimize karo')} disabled={busy}>
+        <button className="assistant-action-btn" onClick={() => send('optimize this')} disabled={busy}>
           <Rocket size={12} /> Optimize
         </button>
-        <button className="assistant-action-btn" onClick={() => send('stress test edge cases batao')} disabled={busy}>
+        <button className="assistant-action-btn" onClick={() => send('list stress-test edge cases')} disabled={busy}>
           <Zap size={12} /> Stress Test
         </button>
         {memCount > 0 && (
