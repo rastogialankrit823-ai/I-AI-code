@@ -12,14 +12,14 @@ Alternates:
 > Open-source interview prep with a local AI judge. $0 forever.
 
 ## Description (260 chars max)
-> Practice DSA, low-level design & mock interviews with an AI that runs entirely on your machine via llama.cpp + Qwen. It finds the exact buggy line, reviews your designs, and judges mock answers — no API keys, no cloud, no subscription. Open source (MIT).
+> Practice DSA, low-level design & mock interviews with an AI that runs entirely on your machine via llama.cpp + Qwen. It finds the exact buggy line, reviews your designs, and judges mock answers — no API keys, no cloud, no subscription. Open source, public beta.
 
 ## Categories
 Developer Tools · Artificial Intelligence · Open Source
 
 ## Links
 - **Get it:** https://github.com/rastogialankrit823-ai/I-AI-code
-- Release: https://github.com/rastogialankrit823-ai/I-AI-code/releases/tag/v1.0.0
+- Release: https://github.com/rastogialankrit823-ai/I-AI-code/releases/tag/v1.0.0-beta
 
 ## Gallery (1270×760)
 | # | File | Caption |
@@ -49,6 +49,8 @@ The hardest engineering problem: **small local models are terrible judges.** Ask
 1. Deterministic bug scanners run *before* the LLM — classic patterns (like backtracking without undo) are caught instantly by static analysis
 2. The judge answers **binary yes/no per rubric point** instead of producing a score, and must *quote your answer* to claim a point — unverifiable claims get flipped to "no"
 3. The final score is clamped to ±30 of a deterministically computed coverage baseline
+
+It's a **public beta** — macOS is well-tested, Linux less so. I'm watching issues closely and shipping fixes within hours, so if something breaks on your machine, tell me and it'll likely be fixed same-day.
 
 Happy to answer anything about making small local models reliable — including everything that totally didn't work. 🙃
 

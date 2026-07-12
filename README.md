@@ -7,6 +7,10 @@
 
 *Runs a Qwen2.5-Coder model entirely on your laptop via [llama.cpp](https://github.com/ggml-org/llama.cpp).*
 
+[![Public Beta](https://img.shields.io/badge/status-public%20beta-orange)](https://github.com/rastogialankrit823-ai/I-AI-code/releases/tag/v1.0.0-beta) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+🚧 **Public beta** — core flows are tested on macOS. Found a rough edge? [Open an issue](https://github.com/rastogialankrit823-ai/I-AI-code/issues) — fixes ship fast.
+
 ![DSA demo — the AI finds the exact buggy line and generates a patch](docs/dsa-demo.gif)
 
 </div>
