@@ -34,3 +34,6 @@ frontend/src-tauri/gen/
 .mode_context/
 .pids/
 _archive/
+
+# ── User workspace files saved from the app (Cmd+S) ──
+/main.py
