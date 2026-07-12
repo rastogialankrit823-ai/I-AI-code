@@ -133,7 +133,7 @@ export default function TabBar({
             <span className="vtab-name">{tab.name}</span>
           )}
           {tab.dirty && <span className="vtab-dirty" title="Unsaved changes">●</span>}
-          {onClose && !tab.pinned && (tabs.length > 1 || onNewTab) && (
+          {onClose && !tab.pinned && (
             <button
               className="vtab-close"
               title="Close (middle-click)"

@@ -147,6 +147,13 @@ export default function FileExplorer({ onFileOpen, selectedPath }) {
     localStorage.removeItem(OPENED_KEY)
   }
 
+  // Refresh when something else writes into the workspace (e.g. Cmd+S on an untitled tab)
+  useEffect(() => {
+    const onFxRefresh = () => refresh()
+    window.addEventListener('fx-refresh', onFxRefresh)
+    return () => window.removeEventListener('fx-refresh', onFxRefresh)
+  })
+
   const toggleHidden = () => {
     const next = !showHidden
     setShowHidden(next)

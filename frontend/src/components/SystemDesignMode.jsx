@@ -31,12 +31,7 @@ function StructureContent({ structure, loading }) {
       <p>Generating...</p>
     </div>
   )
-  if (!structure?.classes?.length) return (
-    <div className="lld-structure-empty">
-      <Layers size={18} style={{ color: 'var(--muted)' }} />
-      <p>Auto-generates from context<br />every 10 min</p>
-    </div>
-  )
+  if (!structure?.classes?.length) return null
   return (
     <div className="lld-structure-body">
       {structure.summary && <p className="lld-struct-summary">{structure.summary}</p>}
@@ -122,8 +117,6 @@ export default function SystemDesignMode({ context, setContext, modelMode = 'mai
   // Structure
   const [structure, setStructure]   = useState(null)
   const [structLoading, setStructLoading] = useState(false)
-  const structTimerRef = useRef(null)
-  const debounceRef    = useRef(null)
 
   // File tree
   const [files, setFiles] = useState([])
@@ -241,16 +234,6 @@ export default function SystemDesignMode({ context, setContext, modelMode = 'mai
     } catch {} finally { setStructLoading(false) }
   }, [context, files, modelMode])
 
-  useEffect(() => {
-    clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(generateStructure, 3000)
-    return () => clearTimeout(debounceRef.current)
-  }, [context])
-
-  useEffect(() => {
-    structTimerRef.current = setInterval(generateStructure, 10 * 60 * 1000)
-    return () => clearInterval(structTimerRef.current)
-  }, [generateStructure])
 
   // ── File ops ──────────────────────────────────────────────────────────────
   const openFile = async (node) => {
@@ -589,21 +572,42 @@ export default function SystemDesignMode({ context, setContext, modelMode = 'mai
             <div className="lld-sidebar-section-header" onClick={() => setStructCollapsed(v => !v)}>
               <Layers size={13} />
               <span>Structure</span>
-              <span className="lld-struct-hint">auto · 10 min</span>
-              <button
-                className="ft-action-btn"
-                style={{ marginLeft: 'auto' }}
-                onClick={e => { e.stopPropagation(); generateStructure() }}
-                disabled={structLoading || !context.trim()}
-                title="Refresh structure"
-              >
-                {structLoading ? <Loader2 size={11} className="spin" /> : <RefreshCcw size={11} />}
-              </button>
+              {structure?.classes?.length > 0 && (
+                <button
+                  className="ft-action-btn"
+                  style={{ marginLeft: 'auto' }}
+                  onClick={e => { e.stopPropagation(); generateStructure() }}
+                  disabled={structLoading || !context.trim()}
+                  title="Regenerate structure"
+                >
+                  {structLoading ? <Loader2 size={11} className="spin" /> : <RefreshCcw size={11} />}
+                </button>
+              )}
               {structCollapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
             </div>
             {!structCollapsed && (
               <div className="lld-sidebar-section-body">
-                <StructureContent structure={structure} loading={structLoading} />
+                {structure?.classes?.length ? (
+                  <StructureContent structure={structure} loading={structLoading} />
+                ) : (
+                  <div className="lld-structure-empty">
+                    {structLoading ? (
+                      <>
+                        <Loader2 size={18} className="spin" />
+                        <p>Generating...</p>
+                      </>
+                    ) : (
+                      <button
+                        className="lld-gen-struct-btn"
+                        onClick={generateStructure}
+                        disabled={!context.trim()}
+                      >
+                        <Layers size={14} />
+                        Generate Structure
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>

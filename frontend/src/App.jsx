@@ -15,45 +15,83 @@ function normalizeOut(s) {
   return String(s || '').replace(/\s+/g, ' ').trim().toLowerCase()
 }
 
+// Aggressive canonical form: lowercase, no quotes, no whitespace.
+// Makes "[1, 2]" equal "[1,2]" and '"abc"' equal 'abc'.
+function canonOut(s) {
+  return String(s || '').toLowerCase().replace(/["']/g, '').replace(/\s+/g, '')
+}
+
 function outputsMatch(actual, expected) {
-  const a = normalizeOut(actual)
-  const e = normalizeOut(expected)
-  if (a === e) return true
-  const na = Number(actual.trim()), ne = Number(expected.trim())
+  const act = String(actual ?? ''), exp = String(expected ?? '')
+  if (!exp.trim()) return true
+  if (normalizeOut(act) === normalizeOut(exp)) return true
+  if (canonOut(act) === canonOut(exp)) return true
+  // Numeric comparison (tolerates 5 vs 5.0)
+  const na = Number(act.trim()), ne = Number(exp.trim())
   if (!isNaN(na) && !isNaN(ne) && isFinite(na) && isFinite(ne)) return na === ne
+  // Programs often print extra lines (prompts, debug) — the answer usually
+  // appears as the last line or as some exact line of the output.
+  const lines = act.split('\n').map(l => l.trim()).filter(Boolean)
+  const last = lines[lines.length - 1] || ''
+  if (canonOut(last) === canonOut(exp)) return true
+  const nl = Number(last)
+  if (!isNaN(nl) && !isNaN(ne) && isFinite(nl) && isFinite(ne)) return nl === ne
+  if (lines.some(l => canonOut(l) === canonOut(exp))) return true
+  // Multi-line expected: compare against the same number of trailing lines
+  const expLines = exp.split('\n').map(l => l.trim()).filter(Boolean)
+  if (expLines.length > 1 && lines.length >= expLines.length) {
+    const tail = lines.slice(-expLines.length)
+    if (tail.every((l, i) => canonOut(l) === canonOut(expLines[i]))) return true
+  }
   return false
 }
 
+// Strip trailing explanation text that problem statements attach to outputs,
+// e.g. "Output: 5 (because ...)" or "Output: true\nExplanation: ..."
+function stripExplanation(s) {
+  return String(s || '')
+    .replace(/\bexplanation\b\s*[:\-][\s\S]*$/i, '')
+    .replace(/\s*\((?:because|since|as|the)\b[^)]*\)\s*$/i, '')
+    .trim()
+}
+
 // Parse Input/Output example pairs from problem statement and match against current stdin.
-// Returns the expected output string, or '' if none found.
+// Returns the expected output string, or '' if none found (=> no verdict, never a guess).
 function resolveExpectedOutput(problemContext, stdin) {
   if (!problemContext) return ''
   const ctx = problemContext
 
-  // Try to find Input/Output blocks (handles multi-line inputs)
+  // Input blocks: everything up to the matching Output
   const blockRe = /Input\s*[:\-]\s*([\s\S]*?)(?=Output\s*[:\-])/gi
-  const outputRe = /Output\s*[:\-]\s*([^\n]+)/gi
+  // Output blocks: may span multiple lines, ends at blank line or next section
+  const outputRe = /Output\s*[:\-]\s*([\s\S]*?)(?=\n\s*\n|\n\s*(?:Input|Example|Constraints?|Explanation|Note)\b|$)/gi
   const inputs = [], outputs = []
   let m
   while ((m = blockRe.exec(ctx)) !== null) inputs.push(m[1].trim())
   while ((m = outputRe.exec(ctx)) !== null) outputs.push(m[1].trim())
 
-  if (inputs.length > 0 && outputs.length > 0 && stdin.trim()) {
-    const normStdin = normalizeOut(stdin)
-    for (let i = 0; i < inputs.length; i++) {
-      const normInput = normalizeOut(inputs[i])
-      // Match if stdin contains the example input or they're equal
-      if (normStdin === normInput || normStdin.includes(normInput) || normInput.includes(normStdin)) {
-        return (outputs[i] || outputs[0] || '').replace(/[^\x20-\x7E]/g, '').trim()
+  const clean = (s) => stripExplanation(String(s || '').replace(/[^\x20-\x7E\n]/g, '').trim())
+
+  if (inputs.length > 0 && outputs.length > 0) {
+    if (stdin.trim()) {
+      const normStdin = normalizeOut(stdin)
+      for (let i = 0; i < inputs.length; i++) {
+        const normInput = normalizeOut(inputs[i])
+        if (normStdin === normInput || normStdin.includes(normInput) || normInput.includes(normStdin)) {
+          return clean(outputs[i] || '')
+        }
       }
+      // stdin doesn't match any example — we don't know the right answer,
+      // so return '' (no verdict) instead of guessing example #1
+      return ''
     }
-    // No stdin match — fall back to first example output
-    return outputs[0].replace(/[^\x20-\x7E]/g, '').trim()
+    // No stdin: assume the code runs the first example
+    return clean(outputs[0])
   }
 
-  // Fallback: find first "Output:" / "Expected:" / "Answer:" line
+  // Fallback: single "Output:" / "Expected:" / "Answer:" line
   const simple = ctx.match(/(?:Output|Expected|Answer)\s*[:\-]\s*([^\n]+)/i)
-  return simple ? simple[1].replace(/[^\x20-\x7E]/g, '').trim() : ''
+  return simple ? clean(simple[1]) : ''
 }
 
 // ── Mode context persistence ──────────────────────────────────────────────────
@@ -163,8 +201,19 @@ export default function App() {
         setTabs(prev => prev.map(t => t.id === tabId ? { ...t, savedContent: t.content } : t))
       } catch { /* backend down — stay dirty */ }
     } else {
-      // untitled: nothing on disk — mark clean so the dot clears
-      setTabs(prev => prev.map(t => t.id === tabId ? { ...t, savedContent: t.content } : t))
+      // untitled: write into the workspace folder open in the sidebar
+      const root = localStorage.getItem('fx_opened_root')
+      if (root) {
+        const path = `${root.replace(/\/$/, '')}/${tab.name}`
+        try {
+          await writeFsFile(path, tab.content)
+          setTabs(prev => prev.map(t => t.id === tabId ? { ...t, path, savedContent: t.content } : t))
+          window.dispatchEvent(new CustomEvent('fx-refresh'))
+        } catch { /* backend down — stay dirty */ }
+      } else {
+        // no workspace open — mark clean so the dot clears
+        setTabs(prev => prev.map(t => t.id === tabId ? { ...t, savedContent: t.content } : t))
+      }
     }
   }, [tabs])
 

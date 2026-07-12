@@ -14,8 +14,11 @@ function normalizeOut(s) {
 function outputsMatch(actual, expected) {
   // Exact match after trim
   if (normalizeOut(actual) === normalizeOut(expected)) return true
+  // Canonical match: no quotes, no whitespace, case-insensitive
+  const canon = (s) => String(s || '').toLowerCase().replace(/["']/g, '').replace(/\s+/g, '')
+  if (canon(actual) === canon(expected)) return true
   // Number comparison
-  const a = Number(actual.trim()), e = Number(expected.trim())
+  const a = Number(String(actual).trim()), e = Number(String(expected).trim())
   if (!isNaN(a) && !isNaN(e) && isFinite(a) && isFinite(e)) return a === e
   return false
 }

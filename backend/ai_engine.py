@@ -225,42 +225,58 @@ _FALLBACK_PORTS = [8080, 8081, 8082, 8083]
 
 
 def _try_llamacpp_url(url: str, prompt: str, timeout: int, model_mode: str, max_tokens: int = LLAMACPP_MAX_TOKENS) -> Optional[str]:
-    """Single attempt to call one llama-server URL. Returns text or None."""
-    if LLAMACPP_API_STYLE == "completion" or url.rstrip("/").endswith("/completion"):
-        payload = {
-            "prompt": prompt,
-            "temperature": LLAMACPP_TEMPERATURE,
-            "n_predict": max_tokens,
-            "stream": False,
-        }
+    """Single attempt to call one llama-server URL. Retries on 503 (slots busy)."""
+    import time as _time
+
+    max_retries = 6
+    for attempt in range(max_retries):
+        if LLAMACPP_API_STYLE == "completion" or url.rstrip("/").endswith("/completion"):
+            payload = {
+                "prompt": prompt,
+                "temperature": LLAMACPP_TEMPERATURE,
+                "n_predict": max_tokens,
+                "stream": False,
+            }
+        else:
+            payload = {
+                "model": resolve_model(model_mode),
+                "messages": [
+                    {"role": "system", "content": "You are Bro, a concise English coding assistant. Respond in clear English. Follow the output format exactly."},
+                    {"role": "user", "content": prompt},
+                ],
+                "temperature": LLAMACPP_TEMPERATURE,
+                "max_tokens": max_tokens,
+                "stream": False,
+            }
+
         response = _REQUEST_SESSION.post(url, json=payload, timeout=timeout)
+
+        if response.status_code == 503:
+            wait = 2 * (attempt + 1)
+            print(f"[llamacpp] 503 slots busy on {url}, retry {attempt+1}/{max_retries} in {wait}s", file=sys.stderr, flush=True)
+            _time.sleep(wait)
+            continue
+
         response.raise_for_status()
+
+        if LLAMACPP_API_STYLE == "completion" or url.rstrip("/").endswith("/completion"):
+            data = response.json()
+            return str(data.get("content") or data.get("response") or "").strip() or None
+
         data = response.json()
+        choices = data.get("choices") or []
+        if choices:
+            message = choices[0].get("message") or {}
+            content = message.get("content")
+            if content is not None:
+                return str(content).strip() or None
+            text = choices[0].get("text")
+            if text is not None:
+                return str(text).strip() or None
         return str(data.get("content") or data.get("response") or "").strip() or None
 
-    payload = {
-        "model": resolve_model(model_mode),
-        "messages": [
-            {"role": "system", "content": "You are Bro, a concise English coding assistant. Respond in clear English. Follow the output format exactly."},
-            {"role": "user", "content": prompt},
-        ],
-        "temperature": LLAMACPP_TEMPERATURE,
-        "max_tokens": max_tokens,
-        "stream": False,
-    }
-    response = _REQUEST_SESSION.post(url, json=payload, timeout=timeout)
-    response.raise_for_status()
-    data = response.json()
-    choices = data.get("choices") or []
-    if choices:
-        message = choices[0].get("message") or {}
-        content = message.get("content")
-        if content is not None:
-            return str(content).strip() or None
-        text = choices[0].get("text")
-        if text is not None:
-            return str(text).strip() or None
-    return str(data.get("content") or data.get("response") or "").strip() or None
+    print(f"[llamacpp] Gave up after {max_retries} retries on {url}", file=sys.stderr, flush=True)
+    return None
 
 
 def _call_llamacpp(prompt: str, timeout: int = LLM_TIMEOUT_SECONDS, model_mode: str = "main", max_tokens: int = LLAMACPP_MAX_TOKENS) -> Optional[str]:
@@ -290,13 +306,11 @@ def _call_llamacpp(prompt: str, timeout: int = LLM_TIMEOUT_SECONDS, model_mode: 
         except requests.exceptions.ConnectionError:
             continue
         except requests.exceptions.Timeout:
-            import sys
             print(f"[llamacpp] Timeout on {url} after {timeout}s", file=sys.stderr, flush=True)
-            return None
+            continue
         except Exception as exc:
-            import sys
             print(f"[llamacpp] Error on {url}: {exc}", file=sys.stderr, flush=True)
-            return None
+            continue
 
     import sys
     print(f"[llamacpp] All candidates failed: {candidates}", file=sys.stderr, flush=True)

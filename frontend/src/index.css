@@ -2340,7 +2340,6 @@ button.run-panel-tab:hover:not(.active):not(:disabled) {
 }
 
 /* Structure content */
-.lld-struct-hint { font-size: 10px; color: var(--muted); font-weight: 400; }
 .lld-structure-body {
   padding: 10px 12px;
   display: flex; flex-direction: column; gap: 10px;
@@ -2351,6 +2350,15 @@ button.run-panel-tab:hover:not(.active):not(:disabled) {
   align-items: center; justify-content: center;
   gap: 8px; color: var(--muted); font-size: 12px; text-align: center;
 }
+.lld-gen-struct-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 16px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--accent, #3b82f6); color: #fff;
+  font-size: 12px; font-weight: 500; cursor: pointer;
+  transition: opacity .15s;
+}
+.lld-gen-struct-btn:hover:not(:disabled) { opacity: .85; }
+.lld-gen-struct-btn:disabled { opacity: .4; cursor: not-allowed; }
 .lld-struct-summary { font-size: 12px; color: var(--muted); margin: 0; line-height: 1.5; }
 .lld-struct-patterns { display: flex; flex-wrap: wrap; gap: 5px; }
 .lld-pattern-chip {
