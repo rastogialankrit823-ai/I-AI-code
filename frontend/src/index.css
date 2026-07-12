@@ -1812,11 +1812,17 @@ button.run-panel-tab:hover:not(.active):not(:disabled) {
   overflow-y: auto; padding: 14px; display: flex; flex-direction: column;
 }
 .iv-code-preview {
-  flex: 1; background: var(--code-bg); border: 1px solid var(--border);
-  border-radius: 8px; padding: 12px; margin: 0; overflow-y: auto;
+  /* Fixed-but-resizable: drag the bottom-right handle to grow/shrink */
+  height: 220px; min-height: 80px; max-height: 65vh;
+  flex-shrink: 0;
+  background: var(--code-bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 12px; margin: 0; overflow: auto;
+  resize: vertical;
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 12.5px; color: var(--text); white-space: pre; line-height: 1.6;
 }
+.iv-code-preview::-webkit-scrollbar { width: 8px; height: 8px; }
+.iv-code-preview::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 .iv-review-qs {
   flex: 1; overflow-y: auto; padding: 14px;
   display: flex; flex-direction: column; gap: 12px;
@@ -1931,7 +1937,16 @@ button.run-panel-tab:hover:not(.active):not(:disabled) {
 /* ── Test results (InterviewMode) ── */
 .iv-test-results {
   background: var(--panel); border: 1px solid var(--border);
-  border-radius: 8px; overflow: hidden;
+  border-radius: 8px;
+  /* Own scrollbar: fill remaining column height, scroll the case list */
+  flex: 1; min-height: 120px;
+  overflow-y: auto;
+}
+.iv-test-results::-webkit-scrollbar { width: 8px; }
+.iv-test-results::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+.iv-test-results .iv-test-header {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--panel);
 }
 .iv-test-header {
   display: flex; align-items: center; gap: 6px;
@@ -1982,7 +1997,7 @@ button.run-panel-tab:hover:not(.active):not(:disabled) {
 /* Review: renamed iv-review-code → iv-review-left */
 .iv-review-left {
   width: 380px; flex-shrink: 0; border-right: 1px solid var(--border);
-  overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px;
+  overflow: hidden; padding: 14px; display: flex; flex-direction: column; gap: 10px;
 }
 
 /* Complete screen test summary */
