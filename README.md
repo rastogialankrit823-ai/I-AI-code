@@ -63,6 +63,23 @@ Prefer no desktop app? Answer "n" during install and use `./scripts/start.sh` �
 - **OS:** macOS 12+ (Apple Silicon = fastest, Metal GPU), Linux (CUDA auto-detected, CPU fallback), Windows via WSL2
 - **Tools:** Python 3.10+, Node 18+, cmake, git — the installer checks and tells you exactly what's missing
 
+### Try it — sample input & expected output
+
+1. Open the app → **DSA Mode** → paste this buggy solution and hit **Run**:
+   ```python
+   def two_sum(nums, target):
+       seen = {}
+       for i, n in enumerate(nums):
+           if target - n in seen:
+               return [seen[n], i]      # bug: wrong key
+           seen[n] = i
+
+   print(two_sum([2, 7, 11, 15], 9))
+   ```
+2. **Expected output:** the run panel shows a `KeyError`, and *Ask AI to debug* points at the exact line — `return [seen[n], i]` — explaining it should be `seen[target - n]`, with a one-click patch.
+3. **LLD Mode** → type a brief like *"Design a parking lot"* → click **Generate Structure** → expected: a class diagram (ParkingLot, Level, Spot, Vehicle…) appears; say *"generate parking_lot.py"* and the complete runnable file lands in your workspace.
+4. **Interview Mode** → pick any DSA mock → expected: a 45-minute timer, run-against-test-suite verdicts per case, and follow-up questions scored by the AI judge at the end.
+
 ## What it looks like
 
 ### DSA Mode
@@ -79,6 +96,15 @@ Describe a design ("Design a parking lot") — the structure panel auto-generate
 Timed mock interviews: DSA problems run against full test suites with pass/fail per case; LLD problems are scored question-by-question by a rubric-based judge that verifies its own claims against your answer before scoring.
 
 ![Interview mode — DSA mock with a 45-minute timer](docs/interview-demo.gif)
+
+## Documentation
+
+| Doc | Covers |
+|---|---|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System diagram, model pipeline, data flow, local/cloud split, key design decisions |
+| [Technical Report](docs/TECHNICAL_REPORT.md) | Model & runtime, quantization, measured latency & memory, tested device, **local AI verification**, evaluation & known failure cases |
+| [Privacy & Safety](docs/PRIVACY.md) | Data handling, storage, permissions, limitations and risks |
+| [ATTRIBUTION.md](ATTRIBUTION.md) | Pretrained model, libraries, and pre-existing work used |
 
 ## Architecture
 
