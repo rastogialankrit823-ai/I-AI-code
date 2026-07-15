@@ -13,6 +13,8 @@
 
 ![DSA demo — the AI finds the exact buggy line and generates a patch](docs/dsa-demo.gif)
 
+📺 **[Watch: full installation & first run (video)](https://youtu.be/0n-XpNNzhRY)**
+
 </div>
 
 ---
