@@ -31,10 +31,21 @@ Interview-prep AI tools want a subscription and send your code to someone's clou
 
 ## Quick Start
 
+Run each step **one at a time** (don't paste all three at once — the installer is interactive):
+
+**1. Clone the repo**
 ```bash
 git clone https://github.com/rastogialankrit823-ai/I-AI-code.git
+```
+
+**2. Go into the folder**
+```bash
 cd I-AI-code
-./scripts/install.sh   # one-time: builds llama.cpp, downloads model (~2.3 GB), builds the desktop app
+```
+
+**3. Run the installer** — one-time: builds llama.cpp, downloads the model (~2.3 GB), builds the desktop app
+```bash
+./scripts/install.sh
 ```
 
 That's it — **once**. The installer ends with a real desktop app (`/Applications/I&AI Code.app` on macOS, AppImage/deb on Linux). From then on it behaves like any normal app:
