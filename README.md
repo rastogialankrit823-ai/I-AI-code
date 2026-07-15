@@ -13,7 +13,7 @@
 
 ![DSA demo — the AI finds the exact buggy line and generates a patch](docs/dsa-demo.gif)
 
-📺 **[Watch: product demo (video)](https://youtu.be/3sihOFCZbOI)** · **[Watch: installation & first run (video)](https://youtu.be/0n-XpNNzhRY)**
+📺 **[Watch: product demo (video)](https://youtu.be/lPtMRruxAWs)** · **[Watch: installation & first run (video)](https://youtu.be/1VX12XrhKJA)**
 
 </div>
 
