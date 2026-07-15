@@ -120,7 +120,12 @@ export default function FileExplorer({ onFileOpen, selectedPath }) {
       localStorage.setItem(OPENED_KEY, res.path)
       pushRecent(res.path)
       setPickerOpen(false)
-    } catch (e) { setError(e.message || 'Could not open folder') }
+    } catch (e) {
+      setError(e.message || 'Could not open folder')
+      const pruned = (JSON.parse(localStorage.getItem(RECENT_KEY) || '[]')).filter(r => r !== path)
+      setRecent(pruned)
+      localStorage.setItem(RECENT_KEY, JSON.stringify(pruned))
+    }
     finally { setLoading(false) }
   }
 

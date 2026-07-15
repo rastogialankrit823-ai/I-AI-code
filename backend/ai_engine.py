@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import re
+import sys
 from collections import OrderedDict
 from typing import Any, Dict, List, Optional
 
@@ -312,7 +313,6 @@ def _call_llamacpp(prompt: str, timeout: int = LLM_TIMEOUT_SECONDS, model_mode: 
             print(f"[llamacpp] Error on {url}: {exc}", file=sys.stderr, flush=True)
             continue
 
-    import sys
     print(f"[llamacpp] All candidates failed: {candidates}", file=sys.stderr, flush=True)
     return None
 

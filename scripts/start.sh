@@ -39,7 +39,12 @@ MODEL="$(find "$ROOT/models" -maxdepth 1 -name '*.gguf' 2>/dev/null | head -1)"
 [ -n "$MODEL" ] || die "No model in ./models/. Run ./scripts/download-model.sh"
 
 bold "Starting llama.cpp ($(basename "$MODEL"))"
-"$LLAMA_BIN" -m "$MODEL" --host 127.0.0.1 --port 8081 -c 8192 -t 4 \
+# Metal on Intel Macs (AMD/Intel GPUs) produces garbage output — force CPU there.
+LLAMA_GPU_ARGS=""
+if [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "x86_64" ]; then
+  LLAMA_GPU_ARGS="-ngl 0"
+fi
+"$LLAMA_BIN" -m "$MODEL" --host 127.0.0.1 --port 8081 -c 8192 -t 4 $LLAMA_GPU_ARGS \
   > "$LOGS/llama.log" 2>&1 &
 PIDS+=($!)
 wait_for "http://127.0.0.1:8081/v1/models" "llama.cpp" 90

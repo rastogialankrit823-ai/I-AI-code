@@ -112,14 +112,20 @@ fn find_llama_server(root: &Path) -> PathBuf {
 
 fn spawn_llama(root: &Path) -> Result<Child, String> {
     let model = find_model(root)?;
+    let mut args: Vec<String> = vec![
+        "-m".into(), model.to_string_lossy().into_owned(),
+        "--host".into(), "127.0.0.1".into(),
+        "--port".into(), "8081".into(),
+        "-c".into(), "8192".into(),
+        "-t".into(), "4".into(),
+    ];
+    // Metal on Intel Macs (AMD/Intel GPUs) produces garbage output — force CPU.
+    if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+        args.push("-ngl".into());
+        args.push("0".into());
+    }
     Command::new(find_llama_server(root))
-        .args([
-            "-m", &model.to_string_lossy(),
-            "--host", "127.0.0.1",
-            "--port", "8081",
-            "-c", "8192",
-            "-t", "4",
-        ])
+        .args(&args)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
